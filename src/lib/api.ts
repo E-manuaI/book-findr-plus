@@ -2,11 +2,13 @@ import type { Book, RetailerListing, ReprintStatus } from './types';
 import { RETAILERS } from './types';
 
 const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes';
+const API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_KEY;
 
 export async function searchBooks(query: string): Promise<Book[]> {
   if (!query.trim()) return [];
 
-  const res = await fetch(`${GOOGLE_BOOKS_API}?q=${encodeURIComponent(query)}&maxResults=20&orderBy=relevance`);
+  const res = await fetch(
+    `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(query)}&maxResults=20&orderBy=relevance&key=${API_KEY}`);
   if (!res.ok) throw new Error('Failed to fetch books');
 
   const data = await res.json();
@@ -40,7 +42,7 @@ export async function searchBooks(query: string): Promise<Book[]> {
 }
 
 export async function getBookById(id: string): Promise<Book | null> {
-  const res = await fetch(`${GOOGLE_BOOKS_API}/${id}`);
+  const res = await fetch(`${GOOGLE_BOOKS_API}/${id}?key=${API_KEY}`);
   if (!res.ok) return null;
 
   const item = await res.json();
