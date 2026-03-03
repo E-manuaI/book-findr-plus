@@ -1,8 +1,11 @@
 import { SearchBar } from '@/components/SearchBar';
 import { CurrencySelector } from '@/components/CurrencySelector';
-import { useState } from 'react';
+import { BookCard } from '@/components/BookCard';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { BookOpen, TrendingUp, Bell, Globe } from 'lucide-react';
+import { searchUpcoming } from '@/lib/api';
+import type { Book } from '@/lib/types';
 
 const FEATURES = [
   { icon: BookOpen, title: 'Every Edition', desc: 'Hardcover, paperback, deluxe, omnibus & box sets' },
@@ -13,10 +16,25 @@ const FEATURES = [
 
 const Index = () => {
   const [currency, setCurrency] = useState('GBP');
+  const [upcoming, setUpcoming] = useState<Book[]>([]);
+  const [recent, setRecent] = useState<Book[]>([]);
+
+  useEffect(() => {
+    searchUpcoming('manga new releases 2025 2026').then(books => {
+      const now = new Date();
+      const up: Book[] = [];
+      const rec: Book[] = [];
+      books.forEach(b => {
+        if (b.releaseStatus === 'upcoming') up.push(b);
+        else rec.push(b);
+      });
+      setUpcoming(up.slice(0, 6));
+      setRecent(rec.slice(0, 6));
+    });
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-40">
         <div className="container flex items-center justify-between h-16 px-4">
           <div className="flex items-center gap-2">
@@ -30,7 +48,7 @@ const Index = () => {
       {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 gradient-hero opacity-[0.07]" />
-        <div className="container px-4 py-20 md:py-32 relative">
+        <div className="container px-4 py-20 md:py-28 relative">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -38,10 +56,10 @@ const Index = () => {
             className="max-w-2xl mx-auto text-center"
           >
             <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight">
-              Track Every <span className="text-primary">Book Release</span>
+              Track Every <span className="text-primary">Manga & Book</span> Release
             </h1>
             <p className="mt-4 text-lg text-muted-foreground font-body max-w-lg mx-auto">
-              Search books & manga. Compare prices across retailers. Never miss a release or restock.
+              Search manga, manhwa & books. Compare prices across retailers. Never miss a release or restock.
             </p>
             <div className="mt-8 max-w-xl mx-auto">
               <SearchBar size="large" />
@@ -51,7 +69,7 @@ const Index = () => {
       </section>
 
       {/* Features */}
-      <section className="container px-4 py-16">
+      <section className="container px-4 py-12">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {FEATURES.map((f, i) => (
             <motion.div
@@ -71,7 +89,30 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Footer */}
+      {/* Upcoming Releases */}
+      {upcoming.length > 0 && (
+        <section className="container px-4 py-8">
+          <h2 className="font-display text-2xl font-bold text-foreground mb-4">🔜 Upcoming Releases</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {upcoming.map((book, i) => (
+              <BookCard key={book.id} book={book} index={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Recently Released */}
+      {recent.length > 0 && (
+        <section className="container px-4 py-8">
+          <h2 className="font-display text-2xl font-bold text-foreground mb-4">📖 Recently Released</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {recent.map((book, i) => (
+              <BookCard key={book.id} book={book} index={i} />
+            ))}
+          </div>
+        </section>
+      )}
+
       <footer className="border-t border-border py-8">
         <div className="container px-4 text-center text-sm text-muted-foreground font-body">
           © 2026 BookReleaseTracker — Track, compare, and never miss a release.
