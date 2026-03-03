@@ -8,6 +8,13 @@ interface BookCardProps {
   index?: number;
 }
 
+const MEDIA_LABELS: Record<string, string> = {
+  manga: '📕 Manga',
+  manhwa: '📗 Manhwa',
+  'graphic-novel': '📘 Graphic Novel',
+  book: '📖 Book',
+};
+
 export function BookCard({ book, index = 0 }: BookCardProps) {
   return (
     <motion.div
@@ -47,12 +54,22 @@ export function BookCard({ book, index = 0 }: BookCardProps) {
             </div>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               <StatusBadge variant={book.releaseStatus} />
+              <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
+                {MEDIA_LABELS[book.mediaType] || book.mediaType}
+              </span>
               {book.publishedDate && (
                 <span className="text-xs text-muted-foreground">
                   {new Date(book.publishedDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </span>
               )}
             </div>
+            {book.genres.length > 0 && (
+              <div className="flex gap-1 mt-1.5 flex-wrap">
+                {book.genres.slice(0, 3).map(g => (
+                  <span key={g} className="text-[10px] text-muted-foreground border border-border rounded px-1.5 py-0.5">{g}</span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </Link>

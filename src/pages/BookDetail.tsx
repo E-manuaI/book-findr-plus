@@ -1,19 +1,26 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { getBookById, getMockRetailerListings, getMockReprintStatus } from '@/lib/api';
-import type { Book, RetailerListing, ReprintStatus } from '@/lib/types';
+import { getBookById, getMockRetailerListings, getMockReprintStatus, getMockReprintDate, getMockEditions, convertPrice } from '@/lib/api';
+import type { Book, RetailerListing, ReprintStatus, BookEdition } from '@/lib/types';
+import { CURRENCIES } from '@/lib/types';
 import { StatusBadge } from '@/components/StatusBadge';
 import { RetailerList } from '@/components/RetailerList';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { SearchBar } from '@/components/SearchBar';
-import { ArrowLeft, Calendar, BookOpen, Hash, Building } from 'lucide-react';
+import { ArrowLeft, Calendar, BookOpen, Hash, Building, Tag } from 'lucide-react';
 import { motion } from 'framer-motion';
+
+const MEDIA_LABELS: Record<string, string> = {
+  manga: '📕 Manga', manhwa: '📗 Manhwa', 'graphic-novel': '📘 Graphic Novel', book: '📖 Book',
+};
 
 export default function BookDetail() {
   const { id } = useParams<{ id: string }>();
   const [book, setBook] = useState<Book | null>(null);
   const [listings, setListings] = useState<RetailerListing[]>([]);
   const [reprintStatus, setReprintStatus] = useState<ReprintStatus>('in-print');
+  const [reprintDate, setReprintDate] = useState<string | null>(null);
+  const [editions, setEditions] = useState<BookEdition[]>([]);
   const [currency, setCurrency] = useState('GBP');
   const [loading, setLoading] = useState(true);
 
@@ -25,6 +32,8 @@ export default function BookDetail() {
       if (b) {
         setListings(getMockRetailerListings(b));
         setReprintStatus(getMockReprintStatus());
+        setReprintDate(getMockReprintDate());
+        setEditions(getMockEditions(b));
       }
       setLoading(false);
     });
@@ -47,6 +56,8 @@ export default function BookDetail() {
       </div>
     );
   }
+
+  const currencySymbol = CURRENCIES.find(c => c.code === currency)?.symbol || currency;
 
   return (
     <div className="min-h-screen bg-background">
@@ -87,7 +98,20 @@ export default function BookDetail() {
                 <div className="flex flex-wrap gap-2 mt-4">
                   <StatusBadge variant={book.releaseStatus} />
                   <StatusBadge variant={reprintStatus} />
+                  <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-muted text-muted-foreground">
+                    {MEDIA_LABELS[book.mediaType]}
+                  </span>
                 </div>
+
+                {book.genres.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {book.genres.map(g => (
+                      <span key={g} className="inline-flex items-center gap-1 text-xs border border-border rounded-full px-2.5 py-0.5 text-muted-foreground">
+                        <Tag className="h-3 w-3" /> {g}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-3 mt-6 text-sm">
                   {book.publishedDate && (
@@ -115,6 +139,12 @@ export default function BookDetail() {
                     </div>
                   )}
                 </div>
+
+                {reprintDate && (
+                  <div className="mt-4 p-3 bg-info/10 border border-info/20 rounded-lg text-sm text-info">
+                    📅 Reprint scheduled: {new Date(reprintDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -122,6 +152,32 @@ export default function BookDetail() {
               <div className="mt-8">
                 <h3 className="font-display text-lg font-semibold text-foreground mb-2">Description</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed font-body line-clamp-6" dangerouslySetInnerHTML={{ __html: book.description }} />
+              </div>
+            )}
+
+            {/* Editions & Availability */}
+            {editions.length > 0 && (
+              <div className="mt-8">
+                <h3 className="font-display text-lg font-semibold text-foreground mb-3">Editions & Availability</h3>
+                <div className="space-y-2">
+                  {editions.map(ed => {
+                    const price = convertPrice(ed.price, ed.currency, currency);
+                    return (
+                      <div key={ed.id} className="flex items-center justify-between bg-card border border-border rounded-xl p-4">
+                        <div>
+                          <span className="font-medium text-foreground">{ed.format}</span>
+                          {ed.isbn && <span className="text-xs text-muted-foreground ml-2">ISBN: {ed.isbn}</span>}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ed.available ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'}`}>
+                            {ed.available ? 'Available' : 'Unavailable'}
+                          </span>
+                          <span className="font-semibold text-foreground">{currencySymbol}{price.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
