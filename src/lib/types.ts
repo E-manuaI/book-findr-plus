@@ -1,10 +1,11 @@
-export type MediaType = 'manga' | 'manhwa' | 'book' | 'graphic-novel';
+export type MediaType = 'manga' | 'manhwa' | 'manhua' | 'light-novel' | 'book' | 'graphic-novel';
 
 export interface Book {
   id: string;
   title: string;
   authors: string[];
-  isbn?: string;
+  isbn13?: string;
+  isbn10?: string;
   description?: string;
   thumbnail?: string;
   publishedDate?: string;
@@ -22,18 +23,15 @@ export interface BookEdition {
   format: string;
   price: number;
   currency: string;
-  isbn?: string;
+  isbn13?: string;
+  isbn10?: string;
   available: boolean;
 }
 
 export interface RetailerListing {
   retailer: RetailerInfo;
-  price: number;
-  currency: string;
-  convertedPrice?: number;
-  convertedCurrency?: string;
-  stockStatus: 'in-stock' | 'out-of-stock' | 'pre-order';
   url: string;
+  buttonLabel: string;
 }
 
 export interface RetailerInfo {
@@ -41,7 +39,18 @@ export interface RetailerInfo {
   name: string;
   logo?: string;
   verified: boolean;
-  searchUrlTemplate: string; // e.g. "https://www.amazon.co.uk/s?k={query}"
+  urlType: 'isbn13' | 'isbn10' | 'search';
+  urlTemplate: string; // uses {ISBN13}, {ISBN10}, or {QUERY}
+  searchFallbackTemplate: string; // always uses {QUERY}
+}
+
+export interface UserStockReport {
+  id: string;
+  retailerId: string;
+  bookId: string;
+  status: 'in-stock' | 'out-of-stock' | 'limited';
+  reportedAt: string;
+  reportedBy: string; // anonymous user id
 }
 
 export interface Currency {
@@ -49,8 +58,6 @@ export interface Currency {
   symbol: string;
   name: string;
 }
-
-export type ReprintStatus = 'reprint-confirmed' | 'awaiting-reprint' | 'ongoing-series' | 'in-print';
 
 export type SortOption = 'relevance' | 'popularity' | 'newest' | 'az';
 
@@ -64,18 +71,63 @@ export const CURRENCIES: Currency[] = [
 ];
 
 export const RETAILERS: RetailerInfo[] = [
-  { id: 'amazon', name: 'Amazon', verified: true, searchUrlTemplate: 'https://www.amazon.co.uk/s?k={query}' },
-  { id: 'waterstones', name: 'Waterstones', verified: true, searchUrlTemplate: 'https://www.waterstones.com/category/book/term/{query}' },
-  { id: 'forbidden-planet', name: 'Forbidden Planet', verified: true, searchUrlTemplate: 'https://forbiddenplanet.com/search/?q={query}' },
-  { id: 'foyles', name: 'Foyles', verified: true, searchUrlTemplate: 'https://www.foyles.co.uk/search?term={query}' },
-  { id: 'travelling-man', name: 'Travelling Man', verified: true, searchUrlTemplate: 'https://www.travellingman.com/search?q={query}' },
+  {
+    id: 'amazon-uk',
+    name: 'Amazon UK',
+    verified: true,
+    urlType: 'isbn10',
+    urlTemplate: 'https://www.amazon.co.uk/dp/{ISBN10}',
+    searchFallbackTemplate: 'https://www.amazon.co.uk/s?k={QUERY}',
+  },
+  {
+    id: 'waterstones',
+    name: 'Waterstones',
+    verified: true,
+    urlType: 'isbn13',
+    urlTemplate: 'https://www.waterstones.com/book/{ISBN13}',
+    searchFallbackTemplate: 'https://www.waterstones.com/category/book/term/{QUERY}',
+  },
+  {
+    id: 'blackwells',
+    name: "Blackwell's",
+    verified: true,
+    urlType: 'isbn13',
+    urlTemplate: 'https://blackwells.co.uk/bookshop/product/{ISBN13}',
+    searchFallbackTemplate: 'https://blackwells.co.uk/bookshop/search?term={QUERY}',
+  },
+  {
+    id: 'foyles',
+    name: 'Foyles',
+    verified: true,
+    urlType: 'isbn13',
+    urlTemplate: 'https://www.foyles.co.uk/book/{ISBN13}',
+    searchFallbackTemplate: 'https://www.foyles.co.uk/search?term={QUERY}',
+  },
+  {
+    id: 'forbidden-planet',
+    name: 'Forbidden Planet',
+    verified: true,
+    urlType: 'isbn13',
+    urlTemplate: 'https://forbiddenplanet.com/catalog/?q={ISBN13}',
+    searchFallbackTemplate: 'https://forbiddenplanet.com/catalog/?q={QUERY}',
+  },
+  {
+    id: 'travelling-man',
+    name: 'Travelling Man',
+    verified: true,
+    urlType: 'search',
+    urlTemplate: 'https://travellingman.com/search?q={QUERY}',
+    searchFallbackTemplate: 'https://travellingman.com/search?q={QUERY}',
+  },
 ];
 
 export const MEDIA_TYPES: { value: MediaType; label: string }[] = [
   { value: 'manga', label: 'Manga' },
   { value: 'manhwa', label: 'Manhwa' },
-  { value: 'book', label: 'Book' },
+  { value: 'manhua', label: 'Manhua' },
+  { value: 'light-novel', label: 'Light Novel' },
   { value: 'graphic-novel', label: 'Graphic Novel' },
+  { value: 'book', label: 'Book' },
 ];
 
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [

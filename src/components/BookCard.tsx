@@ -1,5 +1,6 @@
 import type { Book } from '@/lib/types';
 import { StatusBadge } from './StatusBadge';
+import { CountdownTimer } from './CountdownTimer';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
@@ -11,6 +12,8 @@ interface BookCardProps {
 const MEDIA_LABELS: Record<string, string> = {
   manga: '📕 Manga',
   manhwa: '📗 Manhwa',
+  manhua: '📙 Manhua',
+  'light-novel': '📓 Light Novel',
   'graphic-novel': '📘 Graphic Novel',
   book: '📖 Book',
 };
@@ -57,7 +60,10 @@ export function BookCard({ book, index = 0 }: BookCardProps) {
               <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">
                 {MEDIA_LABELS[book.mediaType] || book.mediaType}
               </span>
-              {book.publishedDate && (
+              {book.releaseStatus === 'upcoming' && book.publishedDate && (
+                <CountdownTimer targetDate={book.publishedDate} />
+              )}
+              {book.releaseStatus === 'released' && book.publishedDate && (
                 <span className="text-xs text-muted-foreground">
                   {new Date(book.publishedDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                 </span>
