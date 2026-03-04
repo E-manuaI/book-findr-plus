@@ -4,9 +4,11 @@ import { BookCard } from '@/components/BookCard';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { BookOpen, ShoppingBag, Users, Globe } from 'lucide-react';
-import { searchUpcoming } from '@/lib/api';
+import { searchRecentReleases, searchUpcoming } from '@/lib/api';
 import type { Book, MediaType } from '@/lib/types';
+import { MEDIA_TAG_OPTIONS } from '@/lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const FEATURES = [
   { icon: BookOpen, title: 'ISBN-Based Links', desc: 'Direct product pages via ISBN — no guesswork' },
@@ -15,46 +17,58 @@ const FEATURES = [
   { icon: Globe, title: 'Multi-Currency', desc: 'Prices converted to your preferred currency' },
 ];
 
-type CategoryTab = 'manga' | 'manhwa-manhua' | 'books-ln';
-
-const CATEGORY_QUERIES: Record<CategoryTab, string> = {
-  'manga': 'manga new releases 2025',
-  'manhwa-manhua': 'manhwa manhua webtoon 2025',
-  'books-ln': 'light novel book new releases 2025',
-};
-
-const CATEGORY_FILTERS: Record<CategoryTab, (b: Book) => boolean> = {
-  'manga': (b) => b.mediaType === 'manga',
-  'manhwa-manhua': (b) => b.mediaType === 'manhwa' || b.mediaType === 'manhua',
-  'books-ln': (b) => b.mediaType === 'book' || b.mediaType === 'light-novel' || b.mediaType === 'graphic-novel',
-};
+const MONTH_OPTIONS = [
+  { value: '1', label: 'Last 1 month' },
+  { value: '2', label: 'Last 2 months' },
+  { value: '3', label: 'Last 3 months' },
+];
 
 const Index = () => {
   const [currency, setCurrency] = useState('GBP');
-  const [activeTab, setActiveTab] = useState<CategoryTab>('manga');
-  const [books, setBooks] = useState<Record<CategoryTab, Book[]>>({
-    'manga': [],
-    'manhwa-manhua': [],
-    'books-ln': [],
-  });
-  const [loadedTabs, setLoadedTabs] = useState<Set<CategoryTab>>(new Set());
+  const [activeTab, setActiveTab] = useState('recent');
+  const [recentBooks, setRecentBooks] = useState<Book[]>([]);
+  const [upcomingBooks, setUpcomingBooks] = useState<Book[]>([]);
+  const [recentMonths, setRecentMonths] = useState('3');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [loadedRecent, setLoadedRecent] = useState(false);
+  const [loadedUpcoming, setLoadedUpcoming] = useState(false);
 
   useEffect(() => {
-    if (loadedTabs.has(activeTab)) return;
+    if (activeTab === 'recent' && !loadedRecent) {
+      searchRecentReleases(parseInt(recentMonths)).then(books => {
+        setRecentBooks(books);
+        setLoadedRecent(true);
+      });
+    }
+  }, [activeTab, loadedRecent, recentMonths]);
 
-    searchUpcoming(CATEGORY_QUERIES[activeTab]).then(results => {
-      const filtered = results.filter(CATEGORY_FILTERS[activeTab]);
-      // If filter yields few results, show all
-      const finalBooks = filtered.length >= 3 ? filtered : results;
+  useEffect(() => {
+    if (activeTab === 'upcoming' && !loadedUpcoming) {
+      searchUpcoming().then(books => {
+        setUpcomingBooks(books);
+        setLoadedUpcoming(true);
+      });
+    }
+  }, [activeTab, loadedUpcoming]);
 
-      setBooks(prev => ({ ...prev, [activeTab]: finalBooks.slice(0, 12) }));
-      setLoadedTabs(prev => new Set(prev).add(activeTab));
-    });
-  }, [activeTab, loadedTabs]);
+  // Re-fetch when months change
+  useEffect(() => {
+    if (activeTab === 'recent') {
+      setLoadedRecent(false);
+    }
+  }, [recentMonths]);
 
-  const currentBooks = books[activeTab];
-  const upcoming = currentBooks.filter(b => b.releaseStatus === 'upcoming');
-  const recent = currentBooks.filter(b => b.releaseStatus === 'released');
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+  };
+
+  const filterByTags = (books: Book[]) => {
+    if (selectedTags.length === 0) return books;
+    return books.filter(b => selectedTags.includes(b.mediaType));
+  };
+
+  const filteredRecent = filterByTags(recentBooks);
+  const filteredUpcoming = filterByTags(upcomingBooks);
 
   return (
     <div className="min-h-screen bg-background">
@@ -112,42 +126,83 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Category Tabs */}
+      {/* Tabs: Recently Released / Upcoming */}
       <section className="container px-4 py-8">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as CategoryTab)}>
-          <TabsList className="mb-6">
-            <TabsTrigger value="manga">📕 Manga</TabsTrigger>
-            <TabsTrigger value="manhwa-manhua">📗 Manhwa & Manhua</TabsTrigger>
-            <TabsTrigger value="books-ln">📖 Books & Light Novels</TabsTrigger>
-          </TabsList>
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <div className="flex flex-wrap items-center gap-4 mb-6">
+            <TabsList>
+              <TabsTrigger value="recent">📖 Recently Released</TabsTrigger>
+              <TabsTrigger value="upcoming">🔜 Upcoming</TabsTrigger>
+            </TabsList>
 
-          <TabsContent value={activeTab}>
-            {upcoming.length > 0 && (
-              <div className="mb-8">
-                <h2 className="font-display text-2xl font-bold text-foreground mb-4">🔜 Upcoming Releases</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {upcoming.map((book, i) => (
-                    <BookCard key={book.id} book={book} index={i} />
+            {activeTab === 'recent' && (
+              <Select value={recentMonths} onValueChange={setRecentMonths}>
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTH_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                   ))}
-                </div>
-              </div>
+                </SelectContent>
+              </Select>
             )}
+          </div>
 
-            {recent.length > 0 && (
-              <div>
-                <h2 className="font-display text-2xl font-bold text-foreground mb-4">📖 Recently Released</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {recent.map((book, i) => (
-                    <BookCard key={book.id} book={book} index={i} />
-                  ))}
-                </div>
-              </div>
+          {/* Tag filters */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            {MEDIA_TAG_OPTIONS.map(tag => {
+              const active = selectedTags.includes(tag.value);
+              return (
+                <button
+                  key={tag.value}
+                  onClick={() => toggleTag(tag.value)}
+                  className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors border ${
+                    active
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-card text-muted-foreground border-border hover:border-primary/50'
+                  }`}
+                >
+                  {tag.label}
+                </button>
+              );
+            })}
+            {selectedTags.length > 0 && (
+              <button
+                onClick={() => setSelectedTags([])}
+                className="text-xs text-muted-foreground hover:text-foreground underline"
+              >
+                Clear filters
+              </button>
             )}
+          </div>
 
-            {currentBooks.length === 0 && (
+          <TabsContent value="recent">
+            {filteredRecent.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredRecent.map((book, i) => (
+                  <BookCard key={book.id} book={book} index={i} />
+                ))}
+              </div>
+            ) : (
               <div className="text-center py-16 text-muted-foreground">
                 <p className="text-4xl mb-4">📚</p>
-                <p className="font-body">Loading titles...</p>
+                <p className="font-body">{loadedRecent ? 'No recently released titles found' : 'Loading titles...'}</p>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="upcoming">
+            {filteredUpcoming.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredUpcoming.map((book, i) => (
+                  <BookCard key={book.id} book={book} index={i} />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-16 text-muted-foreground">
+                <p className="text-4xl mb-4">📚</p>
+                <p className="font-body">{loadedUpcoming ? 'No upcoming titles found' : 'Loading titles...'}</p>
               </div>
             )}
           </TabsContent>

@@ -1,5 +1,5 @@
-import type { Book, RetailerListing, BookEdition, MediaType, SortOption } from './types';
-import { RETAILERS, EDITION_FORMATS } from './types';
+import type { Book, RetailerListing, MediaType, SortOption } from './types';
+import { RETAILERS } from './types';
 
 const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes';
 const API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_KEY;
@@ -16,28 +16,31 @@ export function isbn13to10(isbn13: string): string | null {
   return core + (check === 10 ? 'X' : String(check));
 }
 
+function cleanTitleQuery(title: string): string {
+  return title.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function cleanSearchQuery(title: string, authors: string[]): string {
-  // Strip special chars, keep alphanumeric and spaces
-  const cleaned = `${title} ${authors[0] || ''}`.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
-  return cleaned;
+  return `${title} ${authors[0] || ''}`.replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function buildRetailerUrl(retailer: typeof RETAILERS[0], book: Book): { url: string; buttonLabel: string } {
   const isbn13 = book.isbn13;
   const isbn10 = book.isbn10 || (isbn13 ? isbn13to10(isbn13) : null);
   const query = cleanSearchQuery(book.title, book.authors);
+  const titleOnly = cleanTitleQuery(book.title);
 
-  // Special case: Travelling Man always uses search
+  // Travelling Man: title only, no author
   if (retailer.id === 'travelling-man') {
     return {
-      url: retailer.urlTemplate.replace('{QUERY}', encodeURIComponent(query)),
+      url: retailer.urlTemplate.replace('{QUERY}', encodeURIComponent(titleOnly)),
       buttonLabel: `Check availability at ${retailer.name}`,
     };
   }
 
-  // Special case: Forbidden Planet uses catalog search with ISBN
+  // Forbidden Planet: catalog search with ISBN
   if (retailer.id === 'forbidden-planet') {
-    const searchTerm = isbn13 || query;
+    const searchTerm = isbn13 || titleOnly;
     return {
       url: retailer.urlTemplate.replace('{ISBN13}', encodeURIComponent(searchTerm)),
       buttonLabel: `Check availability at ${retailer.name}`,
@@ -107,7 +110,6 @@ function extractISBNs(identifiers: any[] | undefined): { isbn13?: string; isbn10
     if (id.type === 'ISBN_13') isbn13 = id.identifier;
     if (id.type === 'ISBN_10') isbn10 = id.identifier;
   }
-  // Derive isbn10 from isbn13 if missing
   if (isbn13 && !isbn10) {
     isbn10 = isbn13to10(isbn13) || undefined;
   }
@@ -143,33 +145,65 @@ function mapBookItem(item: any): Book {
   };
 }
 
-export async function searchBooks(query: string, sort?: SortOption): Promise<Book[]> {
-  if (!query.trim()) return [];
+export interface SearchResult {
+  books: Book[];
+  totalItems: number;
+}
+
+export async function searchBooks(query: string, sort?: SortOption, startIndex: number = 0): Promise<SearchResult> {
+  if (!query.trim()) return { books: [], totalItems: 0 };
 
   let orderBy = 'relevance';
   if (sort === 'newest') orderBy = 'newest';
 
   const res = await fetch(
-    `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(query)}&maxResults=40&orderBy=${orderBy}&key=${API_KEY}`
+    `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(query)}&maxResults=20&startIndex=${startIndex}&orderBy=${orderBy}&key=${API_KEY}`
   );
   if (!res.ok) throw new Error('Failed to fetch books');
 
   const data = await res.json();
-  if (!data.items) return [];
+  if (!data.items) return { books: [], totalItems: data.totalItems || 0 };
 
   let books = data.items.map(mapBookItem);
   if (sort === 'az') books.sort((a: Book, b: Book) => a.title.localeCompare(b.title));
-  return books;
+  if (sort === 'mal-rank') books.sort((a: Book, b: Book) => (a.malRank || 99999) - (b.malRank || 99999));
+  if (sort === 'mal-popularity') books.sort((a: Book, b: Book) => (a.malPopularity || 99999) - (b.malPopularity || 99999));
+
+  return { books, totalItems: data.totalItems || 0 };
 }
 
-export async function searchUpcoming(category: string = 'manga'): Promise<Book[]> {
+export async function searchRecentReleases(monthsBack: number = 3): Promise<Book[]> {
+  const now = new Date();
+  const cutoff = new Date(now);
+  cutoff.setMonth(cutoff.getMonth() - monthsBack);
+
   const res = await fetch(
-    `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(category)}&maxResults=20&orderBy=newest&key=${API_KEY}`
+    `${GOOGLE_BOOKS_API}?q=manga+new+releases&maxResults=20&orderBy=newest&key=${API_KEY}`
   );
   if (!res.ok) return [];
   const data = await res.json();
   if (!data.items) return [];
-  return data.items.map(mapBookItem);
+
+  return data.items.map(mapBookItem).filter((b: Book) => {
+    if (!b.publishedDate) return false;
+    const pubDate = new Date(b.publishedDate);
+    return pubDate >= cutoff && pubDate <= now;
+  });
+}
+
+export async function searchUpcoming(): Promise<Book[]> {
+  const res = await fetch(
+    `${GOOGLE_BOOKS_API}?q=manga+2025+2026&maxResults=20&orderBy=newest&key=${API_KEY}`
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  if (!data.items) return [];
+
+  const now = new Date();
+  return data.items.map(mapBookItem).filter((b: Book) => {
+    if (!b.publishedDate) return true; // include if no date (might be upcoming)
+    return new Date(b.publishedDate) > now;
+  });
 }
 
 export async function getBookById(id: string): Promise<Book | null> {
@@ -184,20 +218,6 @@ export function getRetailerListings(book: Book): RetailerListing[] {
     const { url, buttonLabel } = buildRetailerUrl(retailer, book);
     return { retailer, url, buttonLabel };
   });
-}
-
-export function getMockEditions(book: Book): BookEdition[] {
-  const count = 2 + Math.floor(Math.random() * 3);
-  const formats = [...EDITION_FORMATS].sort(() => Math.random() - 0.5).slice(0, count);
-  return formats.map((format, i) => ({
-    id: `${book.id}-edition-${i}`,
-    format,
-    price: Math.round((7 + Math.random() * 30) * 100) / 100,
-    currency: 'GBP',
-    isbn13: book.isbn13,
-    isbn10: book.isbn10,
-    available: Math.random() > 0.3,
-  }));
 }
 
 // Mock currency conversion
