@@ -15,7 +15,6 @@ export default function SearchResults() {
   const [loading, setLoading] = useState(false);
   const [currency, setCurrency] = useState('GBP');
 
-  // Filters
   const [mediaType, setMediaType] = useState<MediaType | 'all'>('all');
   const [sort, setSort] = useState<SortOption>('relevance');
   const [language, setLanguage] = useState('all');
@@ -52,7 +51,7 @@ export default function SearchResults() {
         <div className="container flex items-center gap-4 h-16 px-4">
           <Link to="/" className="flex items-center gap-2 flex-shrink-0">
             <span className="text-xl">📚</span>
-            <span className="font-display font-bold text-lg text-foreground hidden sm:inline">BookReleaseTracker</span>
+            <span className="font-display font-bold text-lg text-foreground hidden sm:inline">MangaTrack</span>
           </Link>
           <SearchBar className="flex-1 max-w-xl" />
           <CurrencySelector value={currency} onChange={setCurrency} className="w-28 flex-shrink-0" />
@@ -64,7 +63,7 @@ export default function SearchResults() {
           Results for "{query}"
         </h1>
         <p className="text-sm text-muted-foreground mb-4">
-          {loading ? 'Searching...' : `${filteredBooks.length} books found`}
+          {loading ? 'Searching...' : `${filteredBooks.length} titles found`}
         </p>
 
         <SearchFilters
@@ -79,7 +78,7 @@ export default function SearchResults() {
         {!loading && filteredBooks.length === 0 && query && (
           <div className="text-center py-16 text-muted-foreground">
             <p className="text-4xl mb-4">📭</p>
-            <p className="font-display text-lg">No books found</p>
+            <p className="font-display text-lg">No titles found</p>
             <p className="text-sm mt-1">Try adjusting your filters or search term</p>
           </div>
         )}

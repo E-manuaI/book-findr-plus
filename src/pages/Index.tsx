@@ -3,35 +3,58 @@ import { CurrencySelector } from '@/components/CurrencySelector';
 import { BookCard } from '@/components/BookCard';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BookOpen, TrendingUp, Bell, Globe } from 'lucide-react';
+import { BookOpen, ShoppingBag, Users, Globe } from 'lucide-react';
 import { searchUpcoming } from '@/lib/api';
-import type { Book } from '@/lib/types';
+import type { Book, MediaType } from '@/lib/types';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 const FEATURES = [
-  { icon: BookOpen, title: 'Every Edition', desc: 'Hardcover, paperback, deluxe, omnibus & box sets' },
-  { icon: TrendingUp, title: 'Price Comparison', desc: 'Compare prices across verified retailers' },
-  { icon: Bell, title: 'Restock Alerts', desc: 'Get notified when titles are reprinted' },
-  { icon: Globe, title: 'Multi-Currency', desc: 'Prices in your local currency, live rates' },
+  { icon: BookOpen, title: 'ISBN-Based Links', desc: 'Direct product pages via ISBN — no guesswork' },
+  { icon: ShoppingBag, title: 'Verified Retailers', desc: 'Amazon, Waterstones, Blackwell\'s, Foyles & more' },
+  { icon: Users, title: 'Community Reports', desc: 'User-reported stock availability in real time' },
+  { icon: Globe, title: 'Multi-Currency', desc: 'Prices converted to your preferred currency' },
 ];
+
+type CategoryTab = 'manga' | 'manhwa-manhua' | 'books-ln';
+
+const CATEGORY_QUERIES: Record<CategoryTab, string> = {
+  'manga': 'manga new releases 2025',
+  'manhwa-manhua': 'manhwa manhua webtoon 2025',
+  'books-ln': 'light novel book new releases 2025',
+};
+
+const CATEGORY_FILTERS: Record<CategoryTab, (b: Book) => boolean> = {
+  'manga': (b) => b.mediaType === 'manga',
+  'manhwa-manhua': (b) => b.mediaType === 'manhwa' || b.mediaType === 'manhua',
+  'books-ln': (b) => b.mediaType === 'book' || b.mediaType === 'light-novel' || b.mediaType === 'graphic-novel',
+};
 
 const Index = () => {
   const [currency, setCurrency] = useState('GBP');
-  const [upcoming, setUpcoming] = useState<Book[]>([]);
-  const [recent, setRecent] = useState<Book[]>([]);
+  const [activeTab, setActiveTab] = useState<CategoryTab>('manga');
+  const [books, setBooks] = useState<Record<CategoryTab, Book[]>>({
+    'manga': [],
+    'manhwa-manhua': [],
+    'books-ln': [],
+  });
+  const [loadedTabs, setLoadedTabs] = useState<Set<CategoryTab>>(new Set());
 
   useEffect(() => {
-    searchUpcoming('manga new releases 2025 2026').then(books => {
-      const now = new Date();
-      const up: Book[] = [];
-      const rec: Book[] = [];
-      books.forEach(b => {
-        if (b.releaseStatus === 'upcoming') up.push(b);
-        else rec.push(b);
-      });
-      setUpcoming(up.slice(0, 6));
-      setRecent(rec.slice(0, 6));
+    if (loadedTabs.has(activeTab)) return;
+
+    searchUpcoming(CATEGORY_QUERIES[activeTab]).then(results => {
+      const filtered = results.filter(CATEGORY_FILTERS[activeTab]);
+      // If filter yields few results, show all
+      const finalBooks = filtered.length >= 3 ? filtered : results;
+
+      setBooks(prev => ({ ...prev, [activeTab]: finalBooks.slice(0, 12) }));
+      setLoadedTabs(prev => new Set(prev).add(activeTab));
     });
-  }, []);
+  }, [activeTab, loadedTabs]);
+
+  const currentBooks = books[activeTab];
+  const upcoming = currentBooks.filter(b => b.releaseStatus === 'upcoming');
+  const recent = currentBooks.filter(b => b.releaseStatus === 'released');
 
   return (
     <div className="min-h-screen bg-background">
@@ -39,7 +62,7 @@ const Index = () => {
         <div className="container flex items-center justify-between h-16 px-4">
           <div className="flex items-center gap-2">
             <span className="text-xl">📚</span>
-            <span className="font-display font-bold text-lg text-foreground">BookReleaseTracker</span>
+            <span className="font-display font-bold text-lg text-foreground">MangaTrack</span>
           </div>
           <CurrencySelector value={currency} onChange={setCurrency} className="w-32" />
         </div>
@@ -56,10 +79,10 @@ const Index = () => {
             className="max-w-2xl mx-auto text-center"
           >
             <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight">
-              Track Every <span className="text-primary">Manga & Book</span> Release
+              Track Every <span className="text-primary">Manga</span> Release
             </h1>
             <p className="mt-4 text-lg text-muted-foreground font-body max-w-lg mx-auto">
-              Search manga, manhwa & books. Compare prices across retailers. Never miss a release or restock.
+              Accurate ISBN-based retailer links. Community stock reports. No guesswork.
             </p>
             <div className="mt-8 max-w-xl mx-auto">
               <SearchBar size="large" />
@@ -89,33 +112,51 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Upcoming Releases */}
-      {upcoming.length > 0 && (
-        <section className="container px-4 py-8">
-          <h2 className="font-display text-2xl font-bold text-foreground mb-4">🔜 Upcoming Releases</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {upcoming.map((book, i) => (
-              <BookCard key={book.id} book={book} index={i} />
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Category Tabs */}
+      <section className="container px-4 py-8">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as CategoryTab)}>
+          <TabsList className="mb-6">
+            <TabsTrigger value="manga">📕 Manga</TabsTrigger>
+            <TabsTrigger value="manhwa-manhua">📗 Manhwa & Manhua</TabsTrigger>
+            <TabsTrigger value="books-ln">📖 Books & Light Novels</TabsTrigger>
+          </TabsList>
 
-      {/* Recently Released */}
-      {recent.length > 0 && (
-        <section className="container px-4 py-8">
-          <h2 className="font-display text-2xl font-bold text-foreground mb-4">📖 Recently Released</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {recent.map((book, i) => (
-              <BookCard key={book.id} book={book} index={i} />
-            ))}
-          </div>
-        </section>
-      )}
+          <TabsContent value={activeTab}>
+            {upcoming.length > 0 && (
+              <div className="mb-8">
+                <h2 className="font-display text-2xl font-bold text-foreground mb-4">🔜 Upcoming Releases</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {upcoming.map((book, i) => (
+                    <BookCard key={book.id} book={book} index={i} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {recent.length > 0 && (
+              <div>
+                <h2 className="font-display text-2xl font-bold text-foreground mb-4">📖 Recently Released</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {recent.map((book, i) => (
+                    <BookCard key={book.id} book={book} index={i} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {currentBooks.length === 0 && (
+              <div className="text-center py-16 text-muted-foreground">
+                <p className="text-4xl mb-4">📚</p>
+                <p className="font-body">Loading titles...</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </section>
 
       <footer className="border-t border-border py-8">
         <div className="container px-4 text-center text-sm text-muted-foreground font-body">
-          © 2026 BookReleaseTracker — Track, compare, and never miss a release.
+          © 2026 MangaTrack — Accurate tracking, verified links, community-powered.
         </div>
       </footer>
     </div>

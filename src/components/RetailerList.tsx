@@ -1,68 +1,58 @@
-import type { RetailerListing } from '@/lib/types';
-import { StatusBadge } from './StatusBadge';
-import { convertPrice } from '@/lib/api';
-import { CURRENCIES } from '@/lib/types';
+import type { RetailerListing, UserStockReport } from '@/lib/types';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { UserStockReports } from './UserStockReports';
 
 interface RetailerListProps {
   listings: RetailerListing[];
-  targetCurrency: string;
+  bookId: string;
+  stockReports: UserStockReport[];
+  onReportStock: (retailerId: string, status: UserStockReport['status']) => void;
 }
 
-export function RetailerList({ listings, targetCurrency }: RetailerListProps) {
-  const currencyInfo = CURRENCIES.find(c => c.code === targetCurrency);
-  const symbol = currencyInfo?.symbol || targetCurrency;
-
+export function RetailerList({ listings, bookId, stockReports, onReportStock }: RetailerListProps) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <h3 className="font-display text-lg font-semibold text-foreground">Where to Buy</h3>
       <div className="space-y-2">
         {listings.map((listing) => {
-          const converted = listing.currency !== targetCurrency
-            ? convertPrice(listing.price, listing.currency, targetCurrency)
-            : listing.price;
-          const origSymbol = CURRENCIES.find(c => c.code === listing.currency)?.symbol || listing.currency;
+          const retailerReports = stockReports.filter(r => r.retailerId === listing.retailer.id);
 
           return (
             <div
               key={listing.retailer.id}
-              className="flex items-center gap-4 bg-card border border-border rounded-xl p-4 shadow-card hover:shadow-elevated transition-shadow"
+              className="bg-card border border-border rounded-xl p-4 shadow-card"
             >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-foreground">{listing.retailer.name}</span>
-                  {listing.retailer.verified && (
-                    <span className="text-xs text-primary" title="Verified Retailer">✓</span>
-                  )}
+              <div className="flex items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground">{listing.retailer.name}</span>
+                    {listing.retailer.verified && (
+                      <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5" title="Verified Retailer">✓ Verified</span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3 mt-1">
-                  <StatusBadge variant={listing.stockStatus} />
-                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-shrink-0"
+                  asChild
+                >
+                  <a href={listing.url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                    {listing.buttonLabel}
+                  </a>
+                </Button>
               </div>
 
-              <div className="text-right flex-shrink-0">
-                <p className="font-semibold text-foreground">
-                  {symbol}{converted.toFixed(2)}
-                </p>
-                {listing.currency !== targetCurrency && (
-                  <p className="text-xs text-muted-foreground">
-                    {origSymbol}{listing.price.toFixed(2)} {listing.currency}
-                  </p>
-                )}
-              </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-shrink-0"
-                asChild
-              >
-                <a href={listing.url} target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-                  Buy
-                </a>
-              </Button>
+              {/* User stock reports for this retailer */}
+              <UserStockReports
+                reports={retailerReports}
+                retailerId={listing.retailer.id}
+                retailerName={listing.retailer.name}
+                onReport={onReportStock}
+              />
             </div>
           );
         })}

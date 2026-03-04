@@ -1,28 +1,34 @@
 import { useParams, Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
-import { getBookById, getMockRetailerListings, getMockReprintStatus, getMockReprintDate, getMockEditions, convertPrice } from '@/lib/api';
-import type { Book, RetailerListing, ReprintStatus, BookEdition } from '@/lib/types';
+import { useState, useEffect, useCallback } from 'react';
+import { getBookById, getRetailerListings, getMockEditions, convertPrice } from '@/lib/api';
+import type { Book, RetailerListing, BookEdition, UserStockReport } from '@/lib/types';
 import { CURRENCIES } from '@/lib/types';
 import { StatusBadge } from '@/components/StatusBadge';
 import { RetailerList } from '@/components/RetailerList';
 import { CurrencySelector } from '@/components/CurrencySelector';
+import { CountdownTimer } from '@/components/CountdownTimer';
 import { SearchBar } from '@/components/SearchBar';
-import { ArrowLeft, Calendar, BookOpen, Hash, Building, Tag } from 'lucide-react';
+import { ArrowLeft, Calendar, BookOpen, Hash, Building, Tag, Copy } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 
 const MEDIA_LABELS: Record<string, string> = {
-  manga: '📕 Manga', manhwa: '📗 Manhwa', 'graphic-novel': '📘 Graphic Novel', book: '📖 Book',
+  manga: '📕 Manga',
+  manhwa: '📗 Manhwa',
+  manhua: '📙 Manhua',
+  'light-novel': '📓 Light Novel',
+  'graphic-novel': '📘 Graphic Novel',
+  book: '📖 Book',
 };
 
 export default function BookDetail() {
   const { id } = useParams<{ id: string }>();
   const [book, setBook] = useState<Book | null>(null);
   const [listings, setListings] = useState<RetailerListing[]>([]);
-  const [reprintStatus, setReprintStatus] = useState<ReprintStatus>('in-print');
-  const [reprintDate, setReprintDate] = useState<string | null>(null);
   const [editions, setEditions] = useState<BookEdition[]>([]);
   const [currency, setCurrency] = useState('GBP');
   const [loading, setLoading] = useState(true);
+  const [stockReports, setStockReports] = useState<UserStockReport[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -30,14 +36,31 @@ export default function BookDetail() {
     getBookById(id).then((b) => {
       setBook(b);
       if (b) {
-        setListings(getMockRetailerListings(b));
-        setReprintStatus(getMockReprintStatus());
-        setReprintDate(getMockReprintDate());
+        setListings(getRetailerListings(b));
         setEditions(getMockEditions(b));
       }
       setLoading(false);
     });
   }, [id]);
+
+  const handleReportStock = useCallback((retailerId: string, status: UserStockReport['status']) => {
+    if (!book) return;
+    const report: UserStockReport = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      retailerId,
+      bookId: book.id,
+      status,
+      reportedAt: new Date().toISOString(),
+      reportedBy: 'anonymous',
+    };
+    setStockReports(prev => [report, ...prev]);
+    toast.success('Stock report submitted. Thank you!');
+  }, [book]);
+
+  const copyISBN = (isbn: string) => {
+    navigator.clipboard.writeText(isbn);
+    toast.success(`Copied ${isbn}`);
+  };
 
   if (loading) {
     return (
@@ -65,7 +88,7 @@ export default function BookDetail() {
         <div className="container flex items-center gap-4 h-16 px-4">
           <Link to="/" className="flex items-center gap-2 flex-shrink-0">
             <span className="text-xl">📚</span>
-            <span className="font-display font-bold text-lg text-foreground hidden sm:inline">BookReleaseTracker</span>
+            <span className="font-display font-bold text-lg text-foreground hidden sm:inline">MangaTrack</span>
           </Link>
           <SearchBar className="flex-1 max-w-xl" />
           <CurrencySelector value={currency} onChange={setCurrency} className="w-28 flex-shrink-0" />
@@ -97,10 +120,12 @@ export default function BookDetail() {
 
                 <div className="flex flex-wrap gap-2 mt-4">
                   <StatusBadge variant={book.releaseStatus} />
-                  <StatusBadge variant={reprintStatus} />
                   <span className="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold bg-muted text-muted-foreground">
                     {MEDIA_LABELS[book.mediaType]}
                   </span>
+                  {book.releaseStatus === 'upcoming' && book.publishedDate && (
+                    <CountdownTimer targetDate={book.publishedDate} />
+                  )}
                 </div>
 
                 {book.genres.length > 0 && (
@@ -113,7 +138,25 @@ export default function BookDetail() {
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3 mt-6 text-sm">
+                {/* ISBN display */}
+                <div className="mt-4 space-y-1">
+                  {book.isbn13 && (
+                    <button onClick={() => copyISBN(book.isbn13!)} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors group">
+                      <Hash className="h-4 w-4" />
+                      <span>ISBN-13: {book.isbn13}</span>
+                      <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  )}
+                  {book.isbn10 && (
+                    <button onClick={() => copyISBN(book.isbn10!)} className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors group">
+                      <Hash className="h-4 w-4" />
+                      <span>ISBN-10: {book.isbn10}</span>
+                      <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
                   {book.publishedDate && (
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Calendar className="h-4 w-4" />
@@ -126,12 +169,6 @@ export default function BookDetail() {
                       <span>{book.pageCount} pages</span>
                     </div>
                   )}
-                  {book.isbn && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Hash className="h-4 w-4" />
-                      <span>{book.isbn}</span>
-                    </div>
-                  )}
                   {book.publisher && (
                     <div className="flex items-center gap-2 text-muted-foreground">
                       <Building className="h-4 w-4" />
@@ -139,12 +176,6 @@ export default function BookDetail() {
                     </div>
                   )}
                 </div>
-
-                {reprintDate && (
-                  <div className="mt-4 p-3 bg-info/10 border border-info/20 rounded-lg text-sm text-info">
-                    📅 Reprint scheduled: {new Date(reprintDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </div>
-                )}
               </div>
             </div>
 
@@ -158,7 +189,7 @@ export default function BookDetail() {
             {/* Editions & Availability */}
             {editions.length > 0 && (
               <div className="mt-8">
-                <h3 className="font-display text-lg font-semibold text-foreground mb-3">Editions & Availability</h3>
+                <h3 className="font-display text-lg font-semibold text-foreground mb-3">Editions & Formats</h3>
                 <div className="space-y-2">
                   {editions.map(ed => {
                     const price = convertPrice(ed.price, ed.currency, currency);
@@ -166,12 +197,9 @@ export default function BookDetail() {
                       <div key={ed.id} className="flex items-center justify-between bg-card border border-border rounded-xl p-4">
                         <div>
                           <span className="font-medium text-foreground">{ed.format}</span>
-                          {ed.isbn && <span className="text-xs text-muted-foreground ml-2">ISBN: {ed.isbn}</span>}
+                          {ed.isbn13 && <span className="text-xs text-muted-foreground ml-2">ISBN: {ed.isbn13}</span>}
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ed.available ? 'bg-success/15 text-success' : 'bg-destructive/15 text-destructive'}`}>
-                            {ed.available ? 'Available' : 'Unavailable'}
-                          </span>
                           <span className="font-semibold text-foreground">{currencySymbol}{price.toFixed(2)}</span>
                         </div>
                       </div>
@@ -184,7 +212,12 @@ export default function BookDetail() {
 
           {/* Retailers */}
           <div>
-            <RetailerList listings={listings} targetCurrency={currency} />
+            <RetailerList
+              listings={listings}
+              bookId={book.id}
+              stockReports={stockReports}
+              onReportStock={handleReportStock}
+            />
           </div>
         </motion.div>
       </main>
