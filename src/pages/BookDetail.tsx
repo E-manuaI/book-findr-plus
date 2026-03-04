@@ -1,8 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
-import { getBookById, getRetailerListings, getMockEditions, convertPrice } from '@/lib/api';
-import type { Book, RetailerListing, BookEdition, UserStockReport } from '@/lib/types';
-import { CURRENCIES } from '@/lib/types';
+import { getBookById, getRetailerListings } from '@/lib/api';
+import type { Book, RetailerListing, UserStockReport } from '@/lib/types';
 import { StatusBadge } from '@/components/StatusBadge';
 import { RetailerList } from '@/components/RetailerList';
 import { CurrencySelector } from '@/components/CurrencySelector';
@@ -25,7 +24,6 @@ export default function BookDetail() {
   const { id } = useParams<{ id: string }>();
   const [book, setBook] = useState<Book | null>(null);
   const [listings, setListings] = useState<RetailerListing[]>([]);
-  const [editions, setEditions] = useState<BookEdition[]>([]);
   const [currency, setCurrency] = useState('GBP');
   const [loading, setLoading] = useState(true);
   const [stockReports, setStockReports] = useState<UserStockReport[]>([]);
@@ -37,7 +35,6 @@ export default function BookDetail() {
       setBook(b);
       if (b) {
         setListings(getRetailerListings(b));
-        setEditions(getMockEditions(b));
       }
       setLoading(false);
     });
@@ -79,8 +76,6 @@ export default function BookDetail() {
       </div>
     );
   }
-
-  const currencySymbol = CURRENCIES.find(c => c.code === currency)?.symbol || currency;
 
   return (
     <div className="min-h-screen bg-background">
@@ -183,29 +178,6 @@ export default function BookDetail() {
               <div className="mt-8">
                 <h3 className="font-display text-lg font-semibold text-foreground mb-2">Description</h3>
                 <p className="text-sm text-muted-foreground leading-relaxed font-body line-clamp-6" dangerouslySetInnerHTML={{ __html: book.description }} />
-              </div>
-            )}
-
-            {/* Editions & Availability */}
-            {editions.length > 0 && (
-              <div className="mt-8">
-                <h3 className="font-display text-lg font-semibold text-foreground mb-3">Editions & Formats</h3>
-                <div className="space-y-2">
-                  {editions.map(ed => {
-                    const price = convertPrice(ed.price, ed.currency, currency);
-                    return (
-                      <div key={ed.id} className="flex items-center justify-between bg-card border border-border rounded-xl p-4">
-                        <div>
-                          <span className="font-medium text-foreground">{ed.format}</span>
-                          {ed.isbn13 && <span className="text-xs text-muted-foreground ml-2">ISBN: {ed.isbn13}</span>}
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-semibold text-foreground">{currencySymbol}{price.toFixed(2)}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             )}
           </div>

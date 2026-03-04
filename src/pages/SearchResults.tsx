@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { searchBooks } from '@/lib/api';
 import type { Book, MediaType, SortOption } from '@/lib/types';
 import { BookCard } from '@/components/BookCard';
@@ -8,23 +8,78 @@ import { CurrencySelector } from '@/components/CurrencySelector';
 import { SearchFilters } from '@/components/SearchFilters';
 import { Link } from 'react-router-dom';
 
+const MAX_RESULTS = 100;
+
 export default function SearchResults() {
   const [params] = useSearchParams();
   const query = params.get('q') || '';
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [currency, setCurrency] = useState('GBP');
+  const [totalItems, setTotalItems] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
   const [mediaType, setMediaType] = useState<MediaType | 'all'>('all');
   const [sort, setSort] = useState<SortOption>('relevance');
   const [language, setLanguage] = useState('all');
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
 
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  // Initial search
   useEffect(() => {
     if (!query) return;
     setLoading(true);
-    searchBooks(query, sort).then(setBooks).catch(() => setBooks([])).finally(() => setLoading(false));
+    setBooks([]);
+    setHasMore(true);
+    searchBooks(query, sort, 0)
+      .then(result => {
+        setBooks(result.books);
+        setTotalItems(result.totalItems);
+        setHasMore(result.books.length >= 20 && result.books.length < MAX_RESULTS);
+      })
+      .catch(() => { setBooks([]); setTotalItems(0); })
+      .finally(() => setLoading(false));
   }, [query, sort]);
+
+  // Load more
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore || books.length >= MAX_RESULTS) return;
+    setLoadingMore(true);
+    searchBooks(query, sort, books.length)
+      .then(result => {
+        if (result.books.length === 0) {
+          setHasMore(false);
+        } else {
+          setBooks(prev => {
+            const combined = [...prev, ...result.books];
+            if (combined.length >= MAX_RESULTS) {
+              setHasMore(false);
+              return combined.slice(0, MAX_RESULTS);
+            }
+            return combined;
+          });
+        }
+      })
+      .catch(() => setHasMore(false))
+      .finally(() => setLoadingMore(false));
+  }, [loadingMore, hasMore, books.length, query, sort]);
+
+  // Infinite scroll observer
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore();
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [loadMore]);
 
   const availableGenres = useMemo(() => {
     const all = new Set<string>();
@@ -63,7 +118,7 @@ export default function SearchResults() {
           Results for "{query}"
         </h1>
         <p className="text-sm text-muted-foreground mb-4">
-          {loading ? 'Searching...' : `${filteredBooks.length} titles found`}
+          {loading ? 'Searching...' : `${filteredBooks.length} of ${totalItems} titles shown`}
         </p>
 
         <SearchFilters
@@ -87,6 +142,16 @@ export default function SearchResults() {
           {filteredBooks.map((book, i) => (
             <BookCard key={book.id} book={book} index={i} />
           ))}
+        </div>
+
+        {/* Infinite scroll sentinel */}
+        <div ref={sentinelRef} className="py-8 text-center">
+          {loadingMore && (
+            <p className="text-sm text-muted-foreground">Loading more titles...</p>
+          )}
+          {!hasMore && books.length > 0 && (
+            <p className="text-sm text-muted-foreground">All results loaded</p>
+          )}
         </div>
       </main>
     </div>

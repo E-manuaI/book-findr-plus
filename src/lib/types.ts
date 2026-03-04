@@ -16,16 +16,10 @@ export interface Book {
   releaseStatus: 'released' | 'upcoming' | 'pre-order';
   mediaType: MediaType;
   genres: string[];
-}
-
-export interface BookEdition {
-  id: string;
-  format: string;
-  price: number;
-  currency: string;
-  isbn13?: string;
-  isbn10?: string;
-  available: boolean;
+  malId?: number;
+  malScore?: number;
+  malRank?: number;
+  malPopularity?: number;
 }
 
 export interface RetailerListing {
@@ -40,8 +34,8 @@ export interface RetailerInfo {
   logo?: string;
   verified: boolean;
   urlType: 'isbn13' | 'isbn10' | 'search';
-  urlTemplate: string; // uses {ISBN13}, {ISBN10}, or {QUERY}
-  searchFallbackTemplate: string; // always uses {QUERY}
+  urlTemplate: string;
+  searchFallbackTemplate: string;
 }
 
 export interface UserStockReport {
@@ -50,7 +44,7 @@ export interface UserStockReport {
   bookId: string;
   status: 'in-stock' | 'out-of-stock' | 'limited';
   reportedAt: string;
-  reportedBy: string; // anonymous user id
+  reportedBy: string;
 }
 
 export interface Currency {
@@ -59,7 +53,7 @@ export interface Currency {
   name: string;
 }
 
-export type SortOption = 'relevance' | 'popularity' | 'newest' | 'az';
+export type SortOption = 'relevance' | 'popularity' | 'newest' | 'az' | 'mal-rank' | 'mal-popularity';
 
 export const CURRENCIES: Currency[] = [
   { code: 'GBP', symbol: '£', name: 'British Pound' },
@@ -132,9 +126,18 @@ export const MEDIA_TYPES: { value: MediaType; label: string }[] = [
 
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'relevance', label: 'Relevance' },
+  { value: 'mal-rank', label: 'MAL Rank' },
+  { value: 'mal-popularity', label: 'MAL Popularity' },
   { value: 'popularity', label: 'Popularity' },
   { value: 'newest', label: 'Newest First' },
   { value: 'az', label: 'A — Z' },
 ];
 
-export const EDITION_FORMATS = ['Paperback', 'Hardcover', 'Deluxe Edition', 'Omnibus', 'Box Set'] as const;
+export const MEDIA_TAG_OPTIONS = [
+  { value: 'manga', label: 'Manga' },
+  { value: 'manhwa', label: 'Manhwa' },
+  { value: 'manhua', label: 'Manhua' },
+  { value: 'light-novel', label: 'Light Novel' },
+  { value: 'graphic-novel', label: 'Graphic Novel' },
+  { value: 'book', label: 'Book' },
+];
