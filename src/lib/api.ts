@@ -3,6 +3,8 @@ import { RETAILERS } from './types';
 
 const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes';
 const API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_KEY;
+const MAL_CLIENT_ID = import.meta.env.VITE_MAL_CLIENT_ID;
+const MAL_CLIENT_SECRET = import.meta.env.VITE_MAL_CLIENT_SECRET;
 
 // ISBN-13 to ISBN-10 conversion
 export function isbn13to10(isbn13: string): string | null {
@@ -144,6 +146,46 @@ function mapBookItem(item: any): Book {
     genres: extractGenres(info.categories),
   };
 }
+
+//////////////////////
+let malAccessToken: string | null = null;
+let tokenExpiry: number | null = null;
+
+async function getMalAccessToken(): Promise<string> {
+  const now = Date.now();
+  if (malAccessToken && tokenExpiry && now < tokenExpiry) return malAccessToken;
+
+  const res = await fetch('https://myanimelist.net/v1/oauth2/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: MAL_CLIENT_ID,
+      client_secret: MAL_CLIENT_SECRET,
+    }),
+  });
+
+  if (!res.ok) throw new Error('Failed to get MAL access token');
+
+  const data = await res.json();
+  malAccessToken = data.access_token;
+  tokenExpiry = now + (data.expires_in * 1000) - 60000; // refresh 1 min before expiry
+  return malAccessToken;
+}
+
+export async function searchMangaMal(query: string, limit: number = 20, offset: number = 0) {
+  const token = await getMalAccessToken();
+  const res = await fetch(`https://api.myanimelist.net/v2/manga?q=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) throw new Error('Failed to fetch from MAL');
+  return res.json();
+}
+////////////////////////
 
 export interface SearchResult {
   books: Book[];
