@@ -35,8 +35,8 @@ export function SearchBar({ className, size = 'default' }: SearchBarProps) {
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const books = await searchBooks(query);
-        setResults(books.slice(0, 6));
+        const result = await searchBooks(query);
+        setResults(result.books.slice(0, 6));
         setIsOpen(true);
       } catch { setResults([]); }
       setLoading(false);
