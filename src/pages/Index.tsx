@@ -51,14 +51,14 @@ const Index = () => {
     try {
       const result = await searchRecentReleases(parseInt(recentMonths), startIdx);
       setRecentBooks(prev => {
-          const ids = new Set(prev.map(b => b.id));
-          const fresh = result.books.filter(b => !ids.has(b.id));
-          return reset ? result.books : [...prev, ...fresh];
-        });
-        setRecentStartIndex(startIdx + 40);
+        const ids = new Set(prev.map(b => b.id));
+        const fresh = result.books.filter(b => !ids.has(b.id));
+        return reset ? result.books : [...prev, ...fresh];
+      });
     } catch {
       // keep button available even on error
     } finally {
+      setRecentStartIndex(startIdx + 40); // always advance so next press fetches new page
       setRecentLoading(false);
     }
   }, [recentMonths]);
@@ -87,14 +87,14 @@ const Index = () => {
     try {
       const result = await searchUpcoming(startIdx);
       setUpcomingBooks(prev => {
-          const ids = new Set(prev.map(b => b.id));
-          const fresh = result.books.filter(b => !ids.has(b.id));
-          return [...prev, ...fresh];
-        });
-        setUpcomingStartIndex(startIdx + 40);
+        const ids = new Set(prev.map(b => b.id));
+        const fresh = result.books.filter(b => !ids.has(b.id));
+        return [...prev, ...fresh];
+      });
     } catch {
       // keep button available even on error
     } finally {
+      setUpcomingStartIndex(startIdx + 40); // always advance so next press fetches new page
       upcomingLoadingRef.current = false;
       setUpcomingLoading(false);
     }
