@@ -36,7 +36,6 @@ const Index = () => {
   const [recentStartIndex, setRecentStartIndex] = useState(0);
   const [recentHasMore, setRecentHasMore] = useState(true);
   const [recentDoneInitial, setRecentDoneInitial] = useState(false);
-  const recentSentinelRef = useRef<HTMLDivElement>(null);
 
   // Upcoming state — "Load More" button instead of infinite scroll
   const [upcomingLoading, setUpcomingLoading] = useState(false);
@@ -77,21 +76,6 @@ const Index = () => {
   useEffect(() => {
     if (activeTab === 'recent') setRecentDoneInitial(false);
   }, [recentMonths]);
-
-  useEffect(() => {
-    const sentinel = recentSentinelRef.current;
-    if (!sentinel || activeTab !== 'recent') return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && recentHasMore && !recentLoading && recentBooks.length < 100) {
-          loadRecentBatch(recentStartIndex);
-        }
-      },
-      { rootMargin: '200px' }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [activeTab, recentHasMore, recentLoading, recentStartIndex, recentBooks.length, loadRecentBatch]);
 
   // ─── Upcoming (Load More button) ───────────────────────────────────────────
 
@@ -262,9 +246,19 @@ const Index = () => {
                 <p className="font-body">{recentLoading ? 'Loading titles...' : 'No recently released titles found'}</p>
               </div>
             )}
-            <div ref={recentSentinelRef} className="py-8 text-center">
-              {recentLoading && <p className="text-sm text-muted-foreground">Loading more titles...</p>}
-              {!recentHasMore && recentBooks.length > 0 && <p className="text-sm text-muted-foreground">All results loaded</p>}
+            <div className="py-8 text-center">
+              {recentLoading ? (
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              ) : recentHasMore ? (
+                <button
+                  onClick={() => loadRecentBatch(recentStartIndex)}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  Load More
+                </button>
+              ) : recentBooks.length > 0 ? (
+                <p className="text-sm text-muted-foreground">All results loaded</p>
+              ) : null}
             </div>
           </TabsContent>
 
