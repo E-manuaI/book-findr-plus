@@ -183,32 +183,43 @@ const UPCOMING_QUERIES = [
 ];
 
 export async function searchUpcoming(startIndex: number = 0): Promise<SearchResult> {
-  const currentYear = new Date().getFullYear();
-  const nextYear = currentYear + 1;
+  const now = new Date();
+  // Only show books published within the last 6 months or in the future
+  const cutoff = new Date(now);
+  cutoff.setMonth(cutoff.getMonth() - 6);
 
-  const queries = [...UPCOMING_QUERIES, `manga ${currentYear}`, `manga ${nextYear}`];
-
-  // Rotate 2 queries per page load
+  // Rotate through publisher queries 2 at a time per button press
   const pageSize = 2;
-  const queryPage = Math.floor(startIndex / 40) % Math.ceil(queries.length / pageSize);
-  const activeQueries = queries.slice(queryPage * pageSize, queryPage * pageSize + pageSize);
+  const queryPage = Math.floor(startIndex / 40) % Math.ceil(UPCOMING_QUERIES.length / pageSize);
+  const activeQueries = UPCOMING_QUERIES.slice(queryPage * pageSize, queryPage * pageSize + pageSize);
 
   const seen = new Set<string>();
   const books: Book[] = [];
 
   for (const q of activeQueries) {
-    const data = await fetchWithRetry(`${GOOGLE_BOOKS_API}?q=${encodeURIComponent(q)}&maxResults=40&startIndex=${startIndex % 40}&orderBy=newest&showPreorders=true&key=${API_KEY}`);
-    console.log(`[upcoming] query="${q}" items=${data.items?.length ?? 0}`);
+    const data = await fetchWithRetry(
+      `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(q)}&maxResults=40&startIndex=${startIndex % 40}&orderBy=newest&showPreorders=true&key=${API_KEY}`
+    );
     for (const item of data.items || []) {
       const book = mapBookItem(item);
       if (seen.has(book.id)) continue;
       seen.add(book.id);
+      // Filter out generic books and graphic novels
+      if (['book', 'graphic-novel'].includes(book.mediaType)) continue;
+      // Filter out anything published more than 6 months ago
+      if (book.publishedDate && new Date(book.publishedDate) < cutoff) continue;
       books.push(book);
     }
     await delay(300);
   }
 
-  console.log(`[upcoming] total results: ${books.length}`);
+  // Sort: upcoming/undated first, then most recent
+  books.sort((a, b) => {
+    const da = a.publishedDate ? new Date(a.publishedDate).getTime() : Infinity;
+    const db = b.publishedDate ? new Date(b.publishedDate).getTime() : Infinity;
+    return db - da;
+  });
+
   return { books, totalItems: books.length, hasMore: books.length > 0 };
 }
 
