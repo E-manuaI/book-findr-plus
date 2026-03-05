@@ -50,10 +50,15 @@ const Index = () => {
     setRecentLoading(true);
     try {
       const result = await searchRecentReleases(parseInt(recentMonths), startIdx);
-      if (result.books.length === 0) {
+      if (result.books.length === 0 && startIdx > 0) {
+        // Only hide the button if a Load More press returned nothing
         setRecentHasMore(false);
       } else {
-        setRecentBooks(prev => reset ? result.books : [...prev, ...result.books]);
+        setRecentBooks(prev => {
+          const ids = new Set(prev.map(b => b.id));
+          const fresh = result.books.filter(b => !ids.has(b.id));
+          return reset ? result.books : [...prev, ...fresh];
+        });
         setRecentStartIndex(startIdx + 40);
       }
     } catch {
