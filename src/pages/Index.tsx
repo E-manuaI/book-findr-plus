@@ -18,9 +18,9 @@ const FEATURES = [
 ];
 
 const MONTH_OPTIONS = [
-  { value: '1', label: 'Last 1 month' },
-  { value: '2', label: 'Last 2 months' },
   { value: '3', label: 'Last 3 months' },
+  { value: '6', label: 'Last 6 months' },
+  { value: '12', label: 'Last 12 months' },
 ];
 
 const Index = () => {
