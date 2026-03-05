@@ -204,7 +204,8 @@ const UPCOMING_QUERIES = [
 export async function searchUpcoming(startIndex: number = 0): Promise<SearchResult> {
   const now = new Date();
   // Only show books from the start of the current year onwards
-  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // today, time zeroed
+  // Set cutoff to start of today — books from today or future only
+  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
   // Rotate through publisher queries 2 at a time per button press
   const pageSize = 2;
@@ -225,7 +226,7 @@ export async function searchUpcoming(startIndex: number = 0): Promise<SearchResu
       // Must have a publishedDate — no undated books
       if (!book.publishedDate) continue;
       // Must be from Jan 1 of this year or later
-      if (new Date(book.publishedDate) < cutoff) continue;
+      if (new Date(book.publishedDate) < cutoff) continue; // cutoff = midnight today
       books.push(book);
     }
     await delay(300);
