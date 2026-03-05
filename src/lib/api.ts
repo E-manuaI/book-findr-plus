@@ -232,14 +232,14 @@ export async function searchUpcoming(startIndex: number = 0): Promise<SearchResu
     await delay(300);
   }
 
-  // Sort: upcoming/undated first, then most recent
+  // Sort: soonest release date first
   books.sort((a, b) => {
     const da = a.publishedDate ? new Date(a.publishedDate).getTime() : Infinity;
     const db = b.publishedDate ? new Date(b.publishedDate).getTime() : Infinity;
-    return db - da;
+    return da - db;
   });
 
-  return { books, totalItems: books.length, hasMore: books.length > 0 };
+  return { books, totalItems: books.length, hasMore: true };
 }
 
 export async function getBookById(id: string): Promise<Book | null> {
