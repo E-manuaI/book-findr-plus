@@ -1,11 +1,11 @@
 import { SearchBar } from '@/components/SearchBar';
 import { CurrencySelector } from '@/components/CurrencySelector';
 import { BookCard } from '@/components/BookCard';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { BookOpen, ShoppingBag, Users, Globe } from 'lucide-react';
 import { searchRecentReleases, searchUpcoming } from '@/lib/api';
-import type { Book, MediaType } from '@/lib/types';
+import type { Book } from '@/lib/types';
 import { MEDIA_TAG_OPTIONS } from '@/lib/types';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -23,6 +23,8 @@ const MONTH_OPTIONS = [
   { value: '3', label: 'Last 3 months' },
 ];
 
+const MIN_UPCOMING = 9;
+
 const Index = () => {
   const [currency, setCurrency] = useState('GBP');
   const [activeTab, setActiveTab] = useState('recent');
@@ -30,33 +32,155 @@ const Index = () => {
   const [upcomingBooks, setUpcomingBooks] = useState<Book[]>([]);
   const [recentMonths, setRecentMonths] = useState('3');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [loadedRecent, setLoadedRecent] = useState(false);
-  const [loadedUpcoming, setLoadedUpcoming] = useState(false);
+  
+  // Recent releases infinite scroll state
+  const [recentLoading, setRecentLoading] = useState(false);
+  const [recentStartIndex, setRecentStartIndex] = useState(0);
+  const [recentHasMore, setRecentHasMore] = useState(true);
+  const [recentDoneInitial, setRecentDoneInitial] = useState(false);
+  const recentSentinelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (activeTab === 'recent' && !loadedRecent) {
-      searchRecentReleases(parseInt(recentMonths)).then(books => {
-        setRecentBooks(books);
-        setLoadedRecent(true);
-      });
-    }
-  }, [activeTab, loadedRecent, recentMonths]);
+  // Upcoming state
+  const [upcomingLoading, setUpcomingLoading] = useState(false);
+  const [upcomingStartIndex, setUpcomingStartIndex] = useState(0);
+  const [upcomingHasMore, setUpcomingHasMore] = useState(true);
+  const [upcomingDoneInitial, setUpcomingDoneInitial] = useState(false);
+  const upcomingSentinelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (activeTab === 'upcoming' && !loadedUpcoming) {
-      searchUpcoming().then(books => {
-        setUpcomingBooks(books);
-        setLoadedUpcoming(true);
-      });
+  // Load recent releases
+  const loadRecentBatch = useCallback(async (startIdx: number, reset: boolean = false) => {
+    if (recentLoading) return;
+    setRecentLoading(true);
+    try {
+      const result = await searchRecentReleases(parseInt(recentMonths), startIdx);
+      if (result.books.length === 0) {
+        setRecentHasMore(false);
+      } else {
+        setRecentBooks(prev => reset ? result.books : [...prev, ...result.books]);
+        setRecentStartIndex(startIdx + 20);
+      }
+    } catch {
+      setRecentHasMore(false);
+    } finally {
+      setRecentLoading(false);
     }
-  }, [activeTab, loadedUpcoming]);
+  }, [recentLoading, recentMonths]);
+
+  // Initial load for recent
+  useEffect(() => {
+    if (activeTab === 'recent' && !recentDoneInitial) {
+      setRecentBooks([]);
+      setRecentStartIndex(0);
+      setRecentHasMore(true);
+      loadRecentBatch(0, true);
+      setRecentDoneInitial(true);
+    }
+  }, [activeTab, recentDoneInitial]);
 
   // Re-fetch when months change
   useEffect(() => {
     if (activeTab === 'recent') {
-      setLoadedRecent(false);
+      setRecentDoneInitial(false);
     }
   }, [recentMonths]);
+
+  // Recent infinite scroll observer
+  useEffect(() => {
+    const sentinel = recentSentinelRef.current;
+    if (!sentinel || activeTab !== 'recent') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && recentHasMore && !recentLoading && recentBooks.length < 100) {
+          loadRecentBatch(recentStartIndex);
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeTab, recentHasMore, recentLoading, recentStartIndex, recentBooks.length]);
+
+  // Load upcoming - keep fetching until we have MIN_UPCOMING
+  const loadUpcomingBatch = useCallback(async (startIdx: number, accumulated: Book[] = []) => {
+    if (upcomingLoading && startIdx > 0) return;
+    setUpcomingLoading(true);
+    try {
+      const result = await searchUpcoming(startIdx);
+      const combined = [...accumulated, ...result.books];
+      const deduped = combined.filter((b, i, arr) => arr.findIndex(x => x.id === b.id) === i);
+      setUpcomingBooks(deduped);
+      
+      if (result.books.length === 0 || deduped.length >= 100) {
+        setUpcomingHasMore(false);
+        setUpcomingLoading(false);
+        return;
+      }
+      
+      const nextIdx = startIdx + 40;
+      setUpcomingStartIndex(nextIdx);
+      
+      // Keep loading if we don't have enough
+      if (deduped.length < MIN_UPCOMING) {
+        setUpcomingLoading(false);
+        await loadUpcomingBatchInner(nextIdx, deduped);
+      } else {
+        setUpcomingLoading(false);
+      }
+    } catch {
+      setUpcomingHasMore(false);
+      setUpcomingLoading(false);
+    }
+  }, []);
+
+  const loadUpcomingBatchInner = async (startIdx: number, accumulated: Book[]) => {
+    try {
+      const result = await searchUpcoming(startIdx);
+      const combined = [...accumulated, ...result.books];
+      const deduped = combined.filter((b, i, arr) => arr.findIndex(x => x.id === b.id) === i);
+      setUpcomingBooks(deduped);
+
+      if (result.books.length === 0 || deduped.length >= 100) {
+        setUpcomingHasMore(false);
+        return;
+      }
+
+      const nextIdx = startIdx + 40;
+      setUpcomingStartIndex(nextIdx);
+
+      if (deduped.length < MIN_UPCOMING) {
+        await loadUpcomingBatchInner(nextIdx, deduped);
+      }
+    } catch {
+      setUpcomingHasMore(false);
+    }
+  };
+
+  // Initial load for upcoming
+  useEffect(() => {
+    if (activeTab === 'upcoming' && !upcomingDoneInitial) {
+      setUpcomingBooks([]);
+      setUpcomingStartIndex(0);
+      setUpcomingHasMore(true);
+      loadUpcomingBatch(0);
+      setUpcomingDoneInitial(true);
+    }
+  }, [activeTab, upcomingDoneInitial]);
+
+  // Upcoming infinite scroll observer
+  useEffect(() => {
+    const sentinel = upcomingSentinelRef.current;
+    if (!sentinel || activeTab !== 'upcoming') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && upcomingHasMore && !upcomingLoading && upcomingBooks.length >= MIN_UPCOMING && upcomingBooks.length < 100) {
+          loadUpcomingBatch(upcomingStartIndex, upcomingBooks);
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [activeTab, upcomingHasMore, upcomingLoading, upcomingStartIndex, upcomingBooks.length]);
 
   const toggleTag = (tag: string) => {
     setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
@@ -75,8 +199,8 @@ const Index = () => {
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-40">
         <div className="container flex items-center justify-between h-16 px-4">
           <div className="flex items-center gap-2">
-            <span className="text-xl">📚</span>
-            <span className="font-display font-bold text-lg text-foreground">MangaTrack</span>
+            <img src="/images/manganext-logo.png" alt="MangaNext" className="h-8 w-8" />
+            <span className="font-display font-bold text-lg text-foreground">MangaNext</span>
           </div>
           <CurrencySelector value={currency} onChange={setCurrency} className="w-32" />
         </div>
@@ -92,6 +216,7 @@ const Index = () => {
             transition={{ duration: 0.6 }}
             className="max-w-2xl mx-auto text-center"
           >
+            <img src="/images/manganext-logo.png" alt="MangaNext" className="h-16 w-16 mx-auto mb-4" />
             <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-foreground leading-tight">
               Track Every <span className="text-primary">Manga</span> Release
             </h1>
@@ -187,9 +312,13 @@ const Index = () => {
             ) : (
               <div className="text-center py-16 text-muted-foreground">
                 <p className="text-4xl mb-4">📚</p>
-                <p className="font-body">{loadedRecent ? 'No recently released titles found' : 'Loading titles...'}</p>
+                <p className="font-body">{recentLoading ? 'Loading titles...' : 'No recently released titles found'}</p>
               </div>
             )}
+            <div ref={recentSentinelRef} className="py-8 text-center">
+              {recentLoading && <p className="text-sm text-muted-foreground">Loading more titles...</p>}
+              {!recentHasMore && recentBooks.length > 0 && <p className="text-sm text-muted-foreground">All results loaded</p>}
+            </div>
           </TabsContent>
 
           <TabsContent value="upcoming">
@@ -202,16 +331,20 @@ const Index = () => {
             ) : (
               <div className="text-center py-16 text-muted-foreground">
                 <p className="text-4xl mb-4">📚</p>
-                <p className="font-body">{loadedUpcoming ? 'No upcoming titles found' : 'Loading titles...'}</p>
+                <p className="font-body">{upcomingLoading ? 'Loading upcoming titles...' : 'No upcoming titles found'}</p>
               </div>
             )}
+            <div ref={upcomingSentinelRef} className="py-8 text-center">
+              {upcomingLoading && <p className="text-sm text-muted-foreground">Loading more titles...</p>}
+              {!upcomingHasMore && upcomingBooks.length > 0 && <p className="text-sm text-muted-foreground">All results loaded</p>}
+            </div>
           </TabsContent>
         </Tabs>
       </section>
 
       <footer className="border-t border-border py-8">
         <div className="container px-4 text-center text-sm text-muted-foreground font-body">
-          © 2026 MangaTrack — Accurate tracking, verified links, community-powered.
+          © 2026 MangaNext — Accurate tracking, verified links, community-powered.
         </div>
       </footer>
     </div>

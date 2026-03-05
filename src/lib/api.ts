@@ -3,8 +3,6 @@ import { RETAILERS } from './types';
 
 const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes';
 const API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_KEY;
-const MAL_CLIENT_ID = import.meta.env.VITE_MAL_CLIENT_ID;
-const MAL_CLIENT_SECRET = import.meta.env.VITE_MAL_CLIENT_SECRET;
 
 // ISBN-13 to ISBN-10 conversion
 export function isbn13to10(isbn13: string): string | null {
@@ -147,46 +145,6 @@ function mapBookItem(item: any): Book {
   };
 }
 
-//////////////////////
-let malAccessToken: string | null = null;
-let tokenExpiry: number | null = null;
-
-async function getMalAccessToken(): Promise<string> {
-  const now = Date.now();
-  if (malAccessToken && tokenExpiry && now < tokenExpiry) return malAccessToken;
-
-  const res = await fetch('https://myanimelist.net/v1/oauth2/token', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: MAL_CLIENT_ID,
-      client_secret: MAL_CLIENT_SECRET,
-    }),
-  });
-
-  if (!res.ok) throw new Error('Failed to get MAL access token');
-
-  const data = await res.json();
-  malAccessToken = data.access_token;
-  tokenExpiry = now + (data.expires_in * 1000) - 60000; // refresh 1 min before expiry
-  return malAccessToken;
-}
-
-export async function searchMangaMal(query: string, limit: number = 20, offset: number = 0) {
-  const token = await getMalAccessToken();
-  const res = await fetch(`https://api.myanimelist.net/v2/manga?q=${encodeURIComponent(query)}&limit=${limit}&offset=${offset}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  if (!res.ok) throw new Error('Failed to fetch from MAL');
-  return res.json();
-}
-////////////////////////
-
 export interface SearchResult {
   books: Book[];
   totalItems: number;
@@ -195,57 +153,56 @@ export interface SearchResult {
 export async function searchBooks(query: string, sort?: SortOption, startIndex: number = 0): Promise<SearchResult> {
   if (!query.trim()) return { books: [], totalItems: 0 };
 
-  let orderBy = 'relevance';
-  if (sort === 'newest') orderBy = 'newest';
+  const orderBy = sort === 'newest' ? 'newest' : 'relevance';
 
   const res = await fetch(
-    `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(query)}&maxResults=20&startIndex=${startIndex}&orderBy=${orderBy}&key=${API_KEY}`
+    `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(query)}&maxResults=20&startIndex=${startIndex}&orderBy=${orderBy}&showPreorders=true&key=${API_KEY}`
   );
   if (!res.ok) throw new Error('Failed to fetch books');
 
   const data = await res.json();
   if (!data.items) return { books: [], totalItems: data.totalItems || 0 };
 
-  let books = data.items.map(mapBookItem);
-  if (sort === 'az') books.sort((a: Book, b: Book) => a.title.localeCompare(b.title));
-  if (sort === 'mal-rank') books.sort((a: Book, b: Book) => (a.malRank || 99999) - (b.malRank || 99999));
-  if (sort === 'mal-popularity') books.sort((a: Book, b: Book) => (a.malPopularity || 99999) - (b.malPopularity || 99999));
-
+  const books = data.items.map(mapBookItem);
   return { books, totalItems: data.totalItems || 0 };
 }
 
-export async function searchRecentReleases(monthsBack: number = 3): Promise<Book[]> {
+export async function searchRecentReleases(monthsBack: number = 3, startIndex: number = 0): Promise<SearchResult> {
+  const res = await fetch(
+    `${GOOGLE_BOOKS_API}?q=manga+new+releases&maxResults=20&startIndex=${startIndex}&orderBy=newest&showPreorders=true&key=${API_KEY}`
+  );
+  if (!res.ok) return { books: [], totalItems: 0 };
+  const data = await res.json();
+  if (!data.items) return { books: [], totalItems: data.totalItems || 0 };
+
   const now = new Date();
   const cutoff = new Date(now);
   cutoff.setMonth(cutoff.getMonth() - monthsBack);
 
-  const res = await fetch(
-    `${GOOGLE_BOOKS_API}?q=manga+new+releases&maxResults=20&orderBy=newest&key=${API_KEY}`
-  );
-  if (!res.ok) return [];
-  const data = await res.json();
-  if (!data.items) return [];
-
-  return data.items.map(mapBookItem).filter((b: Book) => {
+  const books = data.items.map(mapBookItem).filter((b: Book) => {
     if (!b.publishedDate) return false;
     const pubDate = new Date(b.publishedDate);
     return pubDate >= cutoff && pubDate <= now;
   });
+
+  return { books, totalItems: data.totalItems || 0 };
 }
 
-export async function searchUpcoming(): Promise<Book[]> {
+export async function searchUpcoming(startIndex: number = 0): Promise<SearchResult> {
   const res = await fetch(
-    `${GOOGLE_BOOKS_API}?q=manga+2025+2026&maxResults=20&orderBy=newest&key=${API_KEY}`
+    `${GOOGLE_BOOKS_API}?q=manga+2025+2026&maxResults=40&startIndex=${startIndex}&orderBy=newest&showPreorders=true&key=${API_KEY}`
   );
-  if (!res.ok) return [];
+  if (!res.ok) return { books: [], totalItems: 0 };
   const data = await res.json();
-  if (!data.items) return [];
+  if (!data.items) return { books: [], totalItems: data.totalItems || 0 };
 
   const now = new Date();
-  return data.items.map(mapBookItem).filter((b: Book) => {
-    if (!b.publishedDate) return true; // include if no date (might be upcoming)
+  const books = data.items.map(mapBookItem).filter((b: Book) => {
+    if (!b.publishedDate) return true;
     return new Date(b.publishedDate) > now;
   });
+
+  return { books, totalItems: data.totalItems || 0 };
 }
 
 export async function getBookById(id: string): Promise<Book | null> {

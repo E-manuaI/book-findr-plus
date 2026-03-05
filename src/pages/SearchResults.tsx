@@ -105,8 +105,8 @@ export default function SearchResults() {
       <header className="border-b border-border bg-card/80 backdrop-blur-sm sticky top-0 z-40">
         <div className="container flex items-center gap-4 h-16 px-4">
           <Link to="/" className="flex items-center gap-2 flex-shrink-0">
-            <span className="text-xl">📚</span>
-            <span className="font-display font-bold text-lg text-foreground hidden sm:inline">MangaTrack</span>
+            <img src="/images/manganext-logo.png" alt="MangaNext" className="h-7 w-7" />
+            <span className="font-display font-bold text-lg text-foreground hidden sm:inline">MangaNext</span>
           </Link>
           <SearchBar className="flex-1 max-w-xl" />
           <CurrencySelector value={currency} onChange={setCurrency} className="w-28 flex-shrink-0" />

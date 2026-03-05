@@ -16,10 +16,6 @@ export interface Book {
   releaseStatus: 'released' | 'upcoming' | 'pre-order';
   mediaType: MediaType;
   genres: string[];
-  malId?: number;
-  malScore?: number;
-  malRank?: number;
-  malPopularity?: number;
 }
 
 export interface RetailerListing {
@@ -53,7 +49,7 @@ export interface Currency {
   name: string;
 }
 
-export type SortOption = 'relevance' | 'popularity' | 'newest' | 'az' | 'mal-rank' | 'mal-popularity';
+export type SortOption = 'relevance' | 'newest';
 
 export const CURRENCIES: Currency[] = [
   { code: 'GBP', symbol: '£', name: 'British Pound' },
@@ -126,11 +122,7 @@ export const MEDIA_TYPES: { value: MediaType; label: string }[] = [
 
 export const SORT_OPTIONS: { value: SortOption; label: string }[] = [
   { value: 'relevance', label: 'Relevance' },
-  { value: 'mal-rank', label: 'MAL Rank' },
-  { value: 'mal-popularity', label: 'MAL Popularity' },
-  { value: 'popularity', label: 'Popularity' },
   { value: 'newest', label: 'Newest First' },
-  { value: 'az', label: 'A — Z' },
 ];
 
 export const MEDIA_TAG_OPTIONS = [
