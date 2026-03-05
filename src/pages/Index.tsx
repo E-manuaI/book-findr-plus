@@ -50,8 +50,8 @@ const Index = () => {
     setRecentLoading(true);
     try {
       const result = await searchRecentReleases(parseInt(recentMonths), startIdx);
-      if (result.books.length === 0 && startIdx > 0) {
-        // Only hide the button if a Load More press returned nothing
+      if (result.books.length === 0 && startIdx > 40) {
+        // Only hide after multiple empty pages - single empty page might just be sparse filtering
         setRecentHasMore(false);
       } else {
         setRecentBooks(prev => {
@@ -91,7 +91,8 @@ const Index = () => {
 
     try {
       const result = await searchUpcoming(startIdx);
-      if (result.books.length === 0) {
+      if (result.books.length === 0 && startIdx > 40) {
+        // Keep button available unless multiple pages come back empty
         setUpcomingHasMore(false);
       } else {
         setUpcomingBooks(prev => {
