@@ -4,6 +4,22 @@ import { RETAILERS } from './types';
 const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes';
 const API_KEY = import.meta.env.VITE_GOOGLE_BOOKS_KEY;
 
+
+const MANGA_MEDIA_TYPES = new Set(['manga', 'manhwa', 'manhua', 'light-novel']);
+
+function isMangaRelated(book: Book): boolean {
+  // Must be a known manga media type
+  if (!MANGA_MEDIA_TYPES.has(book.mediaType)) return false;
+  // Extra guard: reject if title looks like academic/non-fiction junk
+  const t = book.title.toLowerCase();
+  const junkPatterns = [
+    'proceedings', 'conference', 'journal', 'volume 1', 'symposium',
+    'dissertation', 'thesis', 'handbook', 'encyclopedia', 'textbook',
+  ];
+  if (junkPatterns.some(p => t.includes(p))) return false;
+  return true;
+}
+
 export function isbn13to10(isbn13: string): string | null {
   if (!isbn13 || isbn13.length !== 13 || !isbn13.startsWith('978')) return null;
   const core = isbn13.slice(3, 12);
@@ -164,6 +180,7 @@ export async function searchRecentReleases(monthsBack: number = 3, startIndex: n
       const book = mapBookItem(item);
       if (seen.has(book.id)) continue;
       seen.add(book.id);
+      if (!isMangaRelated(book)) continue;
       if (!book.publishedDate) continue;
       const pubDate = new Date(book.publishedDate);
       if (pubDate >= cutoff && pubDate <= now) books.push(book);
@@ -204,10 +221,10 @@ export async function searchUpcoming(startIndex: number = 0): Promise<SearchResu
       const book = mapBookItem(item);
       if (seen.has(book.id)) continue;
       seen.add(book.id);
-      // Filter out generic books and graphic novels
-      if (['book', 'graphic-novel'].includes(book.mediaType)) continue;
-      // Filter out anything published more than 6 months ago
-      if (book.publishedDate && new Date(book.publishedDate) < cutoff) continue;
+      if (!isMangaRelated(book)) continue;
+      // Must have a date and be within the last 6 months or future
+      if (!book.publishedDate) continue;
+      if (new Date(book.publishedDate) < cutoff) continue;
       books.push(book);
     }
     await delay(300);
