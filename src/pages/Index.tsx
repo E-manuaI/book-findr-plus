@@ -50,19 +50,14 @@ const Index = () => {
     setRecentLoading(true);
     try {
       const result = await searchRecentReleases(parseInt(recentMonths), startIdx);
-      if (result.books.length === 0 && startIdx > 40) {
-        // Only hide after multiple empty pages - single empty page might just be sparse filtering
-        setRecentHasMore(false);
-      } else {
-        setRecentBooks(prev => {
+      setRecentBooks(prev => {
           const ids = new Set(prev.map(b => b.id));
           const fresh = result.books.filter(b => !ids.has(b.id));
           return reset ? result.books : [...prev, ...fresh];
         });
         setRecentStartIndex(startIdx + 40);
-      }
     } catch {
-      setRecentHasMore(false);
+      // keep button available even on error
     } finally {
       setRecentLoading(false);
     }
@@ -91,19 +86,14 @@ const Index = () => {
 
     try {
       const result = await searchUpcoming(startIdx);
-      if (result.books.length === 0 && startIdx > 40) {
-        // Keep button available unless multiple pages come back empty
-        setUpcomingHasMore(false);
-      } else {
-        setUpcomingBooks(prev => {
+      setUpcomingBooks(prev => {
           const ids = new Set(prev.map(b => b.id));
           const fresh = result.books.filter(b => !ids.has(b.id));
           return [...prev, ...fresh];
         });
         setUpcomingStartIndex(startIdx + 40);
-      }
     } catch {
-      setUpcomingHasMore(false);
+      // keep button available even on error
     } finally {
       upcomingLoadingRef.current = false;
       setUpcomingLoading(false);
@@ -255,16 +245,14 @@ const Index = () => {
             <div className="py-8 text-center">
               {recentLoading ? (
                 <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : recentHasMore ? (
+              ) : (
                 <button
                   onClick={() => loadRecentBatch(recentStartIndex)}
                   className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
                 >
                   Load More
                 </button>
-              ) : recentBooks.length > 0 ? (
-                <p className="text-sm text-muted-foreground">All results loaded</p>
-              ) : null}
+              )}
             </div>
           </TabsContent>
 
@@ -289,16 +277,14 @@ const Index = () => {
             <div className="py-8 text-center">
               {upcomingLoading ? (
                 <p className="text-sm text-muted-foreground">Loading...</p>
-              ) : upcomingHasMore ? (
+              ) : (
                 <button
                   onClick={() => loadUpcomingBatch(upcomingStartIndex)}
                   className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
                 >
                   Load More Upcoming
                 </button>
-              ) : upcomingBooks.length > 0 ? (
-                <p className="text-sm text-muted-foreground">All upcoming results loaded</p>
-              ) : null}
+              )}
             </div>
           </TabsContent>
         </Tabs>
