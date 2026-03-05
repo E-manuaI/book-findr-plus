@@ -251,6 +251,7 @@ export async function searchUpcoming(startIndex: number = 0): Promise<SearchResu
     const data = await fetchWithRetry(
       `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(q)}&maxResults=40&startIndex=${startIndex % 40}&orderBy=newest&showPreorders=true&key=${API_KEY}`
     );
+    console.log('upcoming query results:', data.items?.length ?? 0, 'raw items', data.items?.slice(0,3));
     for (const item of data.items || []) {
       const book = mapBookItem(item);
       if (seen.has(book.id)) continue;
