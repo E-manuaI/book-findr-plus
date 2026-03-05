@@ -30,7 +30,6 @@ function buildRetailerUrl(retailer: typeof RETAILERS[0], book: Book): { url: str
   const query = cleanSearchQuery(book.title, book.authors);
   const titleOnly = cleanTitleQuery(book.title);
 
-  // Travelling Man: title only, no author
   if (retailer.id === 'travelling-man') {
     return {
       url: retailer.urlTemplate.replace('{QUERY}', encodeURIComponent(titleOnly)),
@@ -38,7 +37,6 @@ function buildRetailerUrl(retailer: typeof RETAILERS[0], book: Book): { url: str
     };
   }
 
-  // Forbidden Planet: catalog search with ISBN
   if (retailer.id === 'forbidden-planet') {
     const searchTerm = isbn13 || titleOnly;
     return {
@@ -47,7 +45,6 @@ function buildRetailerUrl(retailer: typeof RETAILERS[0], book: Book): { url: str
     };
   }
 
-  // ISBN-10 retailers (Amazon)
   if (retailer.urlType === 'isbn10' && isbn10) {
     return {
       url: retailer.urlTemplate.replace('{ISBN10}', isbn10),
@@ -55,7 +52,6 @@ function buildRetailerUrl(retailer: typeof RETAILERS[0], book: Book): { url: str
     };
   }
 
-  // ISBN-13 retailers (Waterstones, Blackwell's, Foyles)
   if (retailer.urlType === 'isbn13' && isbn13) {
     return {
       url: retailer.urlTemplate.replace('{ISBN13}', isbn13),
@@ -63,7 +59,6 @@ function buildRetailerUrl(retailer: typeof RETAILERS[0], book: Book): { url: str
     };
   }
 
-  // Fallback: search page
   return {
     url: retailer.searchFallbackTemplate.replace('{QUERY}', encodeURIComponent(query)),
     buttonLabel: `Search at ${retailer.name}`,
@@ -150,10 +145,37 @@ export interface SearchResult {
   totalItems: number;
 }
 
+// Client-side sort helper — called after fetching since Google only supports relevance/newest
+function sortBooksClientSide(books: Book[], sort?: SortOption): Book[] {
+  if (!sort || sort === 'relevance' || sort === 'newest') return books; // already sorted by API
+
+  return [...books].sort((a, b) => {
+    switch (sort) {
+      case 'title_asc':
+        return a.title.localeCompare(b.title);
+      case 'title_desc':
+        return b.title.localeCompare(a.title);
+      case 'date_asc': {
+        const da = a.publishedDate ? new Date(a.publishedDate).getTime() : 0;
+        const db = b.publishedDate ? new Date(b.publishedDate).getTime() : 0;
+        return da - db;
+      }
+      case 'date_desc': {
+        const da = a.publishedDate ? new Date(a.publishedDate).getTime() : 0;
+        const db = b.publishedDate ? new Date(b.publishedDate).getTime() : 0;
+        return db - da;
+      }
+      default:
+        return 0;
+    }
+  });
+}
+
 export async function searchBooks(query: string, sort?: SortOption, startIndex: number = 0): Promise<SearchResult> {
   if (!query.trim()) return { books: [], totalItems: 0 };
 
-  const orderBy = sort === 'newest' ? 'newest' : 'relevance';
+  // Google Books only supports 'newest' or 'relevance' — everything else is done client-side
+  const orderBy = sort === 'newest' || sort === 'date_desc' ? 'newest' : 'relevance';
 
   const res = await fetch(
     `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(query)}&maxResults=20&startIndex=${startIndex}&orderBy=${orderBy}&showPreorders=true&key=${API_KEY}`
@@ -163,46 +185,88 @@ export async function searchBooks(query: string, sort?: SortOption, startIndex: 
   const data = await res.json();
   if (!data.items) return { books: [], totalItems: data.totalItems || 0 };
 
-  const books = data.items.map(mapBookItem);
+  const books = sortBooksClientSide(data.items.map(mapBookItem), sort);
   return { books, totalItems: data.totalItems || 0 };
 }
 
 export async function searchRecentReleases(monthsBack: number = 3, startIndex: number = 0): Promise<SearchResult> {
-  const res = await fetch(
-    `${GOOGLE_BOOKS_API}?q=manga+new+releases&maxResults=20&startIndex=${startIndex}&orderBy=newest&showPreorders=true&key=${API_KEY}`
-  );
-  if (!res.ok) return { books: [], totalItems: 0 };
-  const data = await res.json();
-  if (!data.items) return { books: [], totalItems: data.totalItems || 0 };
-
   const now = new Date();
   const cutoff = new Date(now);
   cutoff.setMonth(cutoff.getMonth() - monthsBack);
 
-  const books = data.items.map(mapBookItem).filter((b: Book) => {
-    if (!b.publishedDate) return false;
-    const pubDate = new Date(b.publishedDate);
-    return pubDate >= cutoff && pubDate <= now;
-  });
+  // Use year range in query to improve chances of getting recent results
+  const currentYear = now.getFullYear();
+  const lastYear = currentYear - 1;
 
-  return { books, totalItems: data.totalItems || 0 };
+  // Run two queries in parallel: one per year to maximise recent results
+  const queries = [
+    `manga+${currentYear}`,
+    `manga+${lastYear}`,
+  ];
+
+  const results = await Promise.all(
+    queries.map(q =>
+      fetch(
+        `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(q)}&maxResults=40&startIndex=${startIndex}&orderBy=newest&showPreorders=true&key=${API_KEY}`
+      ).then(r => r.json()).catch(() => ({ items: [] }))
+    )
+  );
+
+  // Merge, deduplicate by id, and filter to within the window
+  const allItems = results.flatMap(d => d.items || []);
+  const seen = new Set<string>();
+  const books = allItems
+    .map(mapBookItem)
+    .filter((b: Book) => {
+      if (seen.has(b.id)) return false;
+      seen.add(b.id);
+      if (!b.publishedDate) return false;
+      const pubDate = new Date(b.publishedDate);
+      return pubDate >= cutoff && pubDate <= now;
+    });
+
+  return { books, totalItems: books.length };
 }
 
 export async function searchUpcoming(startIndex: number = 0): Promise<SearchResult> {
-  const res = await fetch(
-    `${GOOGLE_BOOKS_API}?q=manga+2025+2026&maxResults=40&startIndex=${startIndex}&orderBy=newest&showPreorders=true&key=${API_KEY}`
-  );
-  if (!res.ok) return { books: [], totalItems: 0 };
-  const data = await res.json();
-  if (!data.items) return { books: [], totalItems: data.totalItems || 0 };
-
   const now = new Date();
-  const books = data.items.map(mapBookItem).filter((b: Book) => {
-    if (!b.publishedDate) return true;
-    return new Date(b.publishedDate) > now;
-  });
+  const currentYear = now.getFullYear();
+  const nextYear = currentYear + 1;
 
-  return { books, totalItems: data.totalItems || 0 };
+  // Query multiple publishers/keywords known to list upcoming titles
+  const queries = [
+    `manga+${currentYear}`,
+    `manga+${nextYear}`,
+    `yen press manga ${currentYear}`,
+    `viz media manga ${currentYear}`,
+  ];
+
+  const results = await Promise.all(
+    queries.map(q =>
+      fetch(
+        `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(q)}&maxResults=40&startIndex=${startIndex}&orderBy=newest&showPreorders=true&key=${API_KEY}`
+      ).then(r => r.json()).catch(() => ({ items: [] }))
+    )
+  );
+
+  const seen = new Set<string>();
+  const books = results
+    .flatMap(d => d.items || [])
+    .map(mapBookItem)
+    .filter((b: Book) => {
+      if (seen.has(b.id)) return false;
+      seen.add(b.id);
+      if (!b.publishedDate) return false;
+      return new Date(b.publishedDate) > now;
+    })
+    .sort((a, b) => {
+      // Sort upcoming by soonest first
+      const da = new Date(a.publishedDate!).getTime();
+      const db = new Date(b.publishedDate!).getTime();
+      return da - db;
+    });
+
+  return { books, totalItems: books.length };
 }
 
 export async function getBookById(id: string): Promise<Book | null> {
