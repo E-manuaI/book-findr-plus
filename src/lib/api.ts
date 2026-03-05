@@ -187,7 +187,9 @@ export async function searchRecentReleases(monthsBack: number = 3, startIndex: n
     }
     await delay(200);
   }
-  return { books, totalItems: books.length, hasMore: books.length > 0 };
+  // Keep Load More available as long as we got any results this page
+  // (user can keep pressing; button only disappears when a page returns nothing)
+  return { books, totalItems: books.length, hasMore: books.length > 0 || startIndex === 0 };
 }
 
 const UPCOMING_QUERIES = [
@@ -201,9 +203,8 @@ const UPCOMING_QUERIES = [
 
 export async function searchUpcoming(startIndex: number = 0): Promise<SearchResult> {
   const now = new Date();
-  // Only show books published within the last 6 months or in the future
-  const cutoff = new Date(now);
-  cutoff.setMonth(cutoff.getMonth() - 6);
+  // Only show books from the start of the current year onwards
+  const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // today, time zeroed
 
   // Rotate through publisher queries 2 at a time per button press
   const pageSize = 2;
@@ -221,9 +222,9 @@ export async function searchUpcoming(startIndex: number = 0): Promise<SearchResu
       const book = mapBookItem(item);
       if (seen.has(book.id)) continue;
       seen.add(book.id);
-      if (!isMangaRelated(book)) continue;
-      // Must have a date and be within the last 6 months or future
+      // Must have a publishedDate — no undated books
       if (!book.publishedDate) continue;
+      // Must be from Jan 1 of this year or later
       if (new Date(book.publishedDate) < cutoff) continue;
       books.push(book);
     }
