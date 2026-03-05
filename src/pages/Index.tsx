@@ -32,8 +32,8 @@ const Index = () => {
   const [upcomingBooks, setUpcomingBooks] = useState<Book[]>([]);
   const [recentMonths, setRecentMonths] = useState('3');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  
-  // Recent releases infinite scroll state
+
+  // Recent releases state
   const [recentLoading, setRecentLoading] = useState(false);
   const [recentStartIndex, setRecentStartIndex] = useState(0);
   const [recentHasMore, setRecentHasMore] = useState(true);
@@ -47,9 +47,12 @@ const Index = () => {
   const [upcomingDoneInitial, setUpcomingDoneInitial] = useState(false);
   const upcomingSentinelRef = useRef<HTMLDivElement>(null);
 
-  // Load recent releases
+  // Ref to track if an upcoming load is in progress (avoids stale closure issues)
+  const upcomingLoadingRef = useRef(false);
+
+  // ─── Recent releases ───────────────────────────────────────────────────────
+
   const loadRecentBatch = useCallback(async (startIdx: number, reset: boolean = false) => {
-    if (recentLoading) return;
     setRecentLoading(true);
     try {
       const result = await searchRecentReleases(parseInt(recentMonths), startIdx);
@@ -57,14 +60,14 @@ const Index = () => {
         setRecentHasMore(false);
       } else {
         setRecentBooks(prev => reset ? result.books : [...prev, ...result.books]);
-        setRecentStartIndex(startIdx + 20);
+        setRecentStartIndex(startIdx + 40);
       }
     } catch {
       setRecentHasMore(false);
     } finally {
       setRecentLoading(false);
     }
-  }, [recentLoading, recentMonths]);
+  }, [recentMonths]);
 
   // Initial load for recent
   useEffect(() => {
@@ -75,16 +78,16 @@ const Index = () => {
       loadRecentBatch(0, true);
       setRecentDoneInitial(true);
     }
-  }, [activeTab, recentDoneInitial]);
+  }, [activeTab, recentDoneInitial, loadRecentBatch]);
 
-  // Re-fetch when months change
+  // Re-fetch when months filter changes
   useEffect(() => {
     if (activeTab === 'recent') {
       setRecentDoneInitial(false);
     }
   }, [recentMonths]);
 
-  // Recent infinite scroll observer
+  // Recent infinite scroll
   useEffect(() => {
     const sentinel = recentSentinelRef.current;
     if (!sentinel || activeTab !== 'recent') return;
@@ -98,62 +101,48 @@ const Index = () => {
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [activeTab, recentHasMore, recentLoading, recentStartIndex, recentBooks.length]);
+  }, [activeTab, recentHasMore, recentLoading, recentStartIndex, recentBooks.length, loadRecentBatch]);
 
-  // Load upcoming - keep fetching until we have MIN_UPCOMING
-  const loadUpcomingBatch = useCallback(async (startIdx: number, accumulated: Book[] = []) => {
-    if (upcomingLoading && startIdx > 0) return;
+  // ─── Upcoming ──────────────────────────────────────────────────────────────
+
+  // Single clean recursive loader — uses a ref guard to prevent overlapping calls
+  const loadUpcoming = useCallback(async (startIdx: number, existing: Book[]) => {
+    if (upcomingLoadingRef.current) return;
+    upcomingLoadingRef.current = true;
     setUpcomingLoading(true);
+
     try {
       const result = await searchUpcoming(startIdx);
-      const combined = [...accumulated, ...result.books];
-      const deduped = combined.filter((b, i, arr) => arr.findIndex(x => x.id === b.id) === i);
-      setUpcomingBooks(deduped);
-      
-      if (result.books.length === 0 || deduped.length >= 100) {
+      const newBooks = result.books;
+
+      // Merge with existing, deduplicating by id
+      const merged = [...existing, ...newBooks].filter(
+        (b, i, arr) => arr.findIndex(x => x.id === b.id) === i
+      );
+
+      setUpcomingBooks(merged);
+
+      if (newBooks.length === 0 || merged.length >= 100) {
         setUpcomingHasMore(false);
-        setUpcomingLoading(false);
         return;
       }
-      
+
       const nextIdx = startIdx + 40;
       setUpcomingStartIndex(nextIdx);
-      
-      // Keep loading if we don't have enough
-      if (deduped.length < MIN_UPCOMING) {
+
+      // Keep auto-loading until we hit the minimum threshold
+      if (merged.length < MIN_UPCOMING) {
+        upcomingLoadingRef.current = false;
         setUpcomingLoading(false);
-        await loadUpcomingBatchInner(nextIdx, deduped);
-      } else {
-        setUpcomingLoading(false);
+        loadUpcoming(nextIdx, merged);
       }
     } catch {
       setUpcomingHasMore(false);
+    } finally {
+      upcomingLoadingRef.current = false;
       setUpcomingLoading(false);
     }
   }, []);
-
-  const loadUpcomingBatchInner = async (startIdx: number, accumulated: Book[]) => {
-    try {
-      const result = await searchUpcoming(startIdx);
-      const combined = [...accumulated, ...result.books];
-      const deduped = combined.filter((b, i, arr) => arr.findIndex(x => x.id === b.id) === i);
-      setUpcomingBooks(deduped);
-
-      if (result.books.length === 0 || deduped.length >= 100) {
-        setUpcomingHasMore(false);
-        return;
-      }
-
-      const nextIdx = startIdx + 40;
-      setUpcomingStartIndex(nextIdx);
-
-      if (deduped.length < MIN_UPCOMING) {
-        await loadUpcomingBatchInner(nextIdx, deduped);
-      }
-    } catch {
-      setUpcomingHasMore(false);
-    }
-  };
 
   // Initial load for upcoming
   useEffect(() => {
@@ -161,26 +150,35 @@ const Index = () => {
       setUpcomingBooks([]);
       setUpcomingStartIndex(0);
       setUpcomingHasMore(true);
-      loadUpcomingBatch(0);
+      upcomingLoadingRef.current = false;
+      loadUpcoming(0, []);
       setUpcomingDoneInitial(true);
     }
-  }, [activeTab, upcomingDoneInitial]);
+  }, [activeTab, upcomingDoneInitial, loadUpcoming]);
 
-  // Upcoming infinite scroll observer
+  // Upcoming infinite scroll
   useEffect(() => {
     const sentinel = upcomingSentinelRef.current;
     if (!sentinel || activeTab !== 'upcoming') return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && upcomingHasMore && !upcomingLoading && upcomingBooks.length >= MIN_UPCOMING && upcomingBooks.length < 100) {
-          loadUpcomingBatch(upcomingStartIndex, upcomingBooks);
+        if (
+          entries[0].isIntersecting &&
+          upcomingHasMore &&
+          !upcomingLoading &&
+          upcomingBooks.length >= MIN_UPCOMING &&
+          upcomingBooks.length < 100
+        ) {
+          loadUpcoming(upcomingStartIndex, upcomingBooks);
         }
       },
       { rootMargin: '200px' }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [activeTab, upcomingHasMore, upcomingLoading, upcomingStartIndex, upcomingBooks.length]);
+  }, [activeTab, upcomingHasMore, upcomingLoading, upcomingStartIndex, upcomingBooks, loadUpcoming]);
+
+  // ─── Filters ───────────────────────────────────────────────────────────────
 
   const toggleTag = (tag: string) => {
     setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
@@ -251,7 +249,7 @@ const Index = () => {
         </div>
       </section>
 
-      {/* Tabs: Recently Released / Upcoming */}
+      {/* Tabs */}
       <section className="container px-4 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="flex flex-wrap items-center gap-4 mb-6">
@@ -330,13 +328,13 @@ const Index = () => {
               </div>
             ) : (
               <div className="text-center py-16 text-muted-foreground">
-                <p className="text-4xl mb-4">📚</p>
+                <p className="text-4xl mb-4">📅</p>
                 <p className="font-body">{upcomingLoading ? 'Loading upcoming titles...' : 'No upcoming titles found'}</p>
               </div>
             )}
             <div ref={upcomingSentinelRef} className="py-8 text-center">
               {upcomingLoading && <p className="text-sm text-muted-foreground">Loading more titles...</p>}
-              {!upcomingHasMore && upcomingBooks.length > 0 && <p className="text-sm text-muted-foreground">All results loaded</p>}
+              {!upcomingHasMore && upcomingBooks.length > 0 && <p className="text-sm text-muted-foreground">All upcoming results loaded</p>}
             </div>
           </TabsContent>
         </Tabs>
