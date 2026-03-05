@@ -183,8 +183,7 @@ const UPCOMING_QUERIES = [
 ];
 
 export async function searchUpcoming(startIndex: number = 0): Promise<SearchResult> {
-  const now = new Date();
-  const currentYear = now.getFullYear();
+  const currentYear = new Date().getFullYear();
   const nextYear = currentYear + 1;
 
   const queries = [...UPCOMING_QUERIES, `manga ${currentYear}`, `manga ${nextYear}`];
@@ -204,24 +203,12 @@ export async function searchUpcoming(startIndex: number = 0): Promise<SearchResu
       const book = mapBookItem(item);
       if (seen.has(book.id)) continue;
       seen.add(book.id);
-      // Key fix: include books with future date OR no date at all
-      // Google Books rarely sets publishedDate in the future for preorders
-      const isPast = book.publishedDate && new Date(book.publishedDate) <= now;
-      if (isPast) continue;
       books.push(book);
     }
     await delay(300);
   }
 
-  // Sort: known future dates first (soonest), then undated books
-  books.sort((a, b) => {
-    if (!a.publishedDate && !b.publishedDate) return 0;
-    if (!a.publishedDate) return 1;
-    if (!b.publishedDate) return -1;
-    return new Date(a.publishedDate).getTime() - new Date(b.publishedDate).getTime();
-  });
-
-  console.log(`[upcoming] passing filter: ${books.length}`);
+  console.log(`[upcoming] total results: ${books.length}`);
   return { books, totalItems: books.length, hasMore: books.length > 0 };
 }
 
